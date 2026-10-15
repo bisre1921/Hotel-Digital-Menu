@@ -58,8 +58,8 @@ export function MenusManager({
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [headerImageUrl, setHeaderImageUrl] = useState("");
-  const [displayLayout, setDisplayLayout] = useState<"GRID" | "LIST" | "CARDS">("GRID");
-  const [isPublished, setIsPublished] = useState(true);
+  const displayLayout = "LIST";
+  const [isPublished, setIsPublished] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -196,22 +196,25 @@ export function MenusManager({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/70">
         <div>
           <div className="text-xs uppercase tracking-widest text-gold-500 font-semibold mb-1">
-            Menu Catalog & Digital Outlets
+            Your business, on the menu
           </div>
           <h1 className="font-serif text-3xl sm:text-4xl font-medium tracking-tight text-foreground">
-            Menus & Culinary Outlets
+            Your menus
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1 font-light">
-            Create independent digital menus for every dining outlet: fine dining restaurants, pool bars, rooftop lounges, and room service.
+            Manage menus for your cafe, restaurant, hotel or individual outlets.
           </p>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+        <Link href="/admin/menus/import" className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-xs font-semibold hover:border-primary"><Upload className="h-4 w-4" /> Import existing menu</Link>
         <button
           onClick={() => setIsCreateOpen(true)}
           className="py-2.5 px-5 rounded-xl text-xs font-semibold uppercase tracking-wider bg-primary text-black hover:opacity-95 shadow-md shadow-gold-500/10 flex items-center justify-center gap-2 transition-all shrink-0"
         >
           <Plus className="w-4 h-4" /> New Digital Menu
         </button>
+        </div>
       </div>
 
       {/* Menus Grid */}
@@ -289,7 +292,7 @@ export function MenusManager({
                   <span>&bull;</span>
                   <span>{menu.itemCount} dishes</span>
                   <span>&bull;</span>
-                  <span className="uppercase text-[10px]">{menu.displayLayout}</span>
+                  <span className="uppercase text-[10px]">Compact cards</span>
                 </div>
 
                 {/* Card Action Buttons */}
@@ -460,31 +463,7 @@ export function MenusManager({
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                    Display Layout Style
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: "GRID", label: "Photo Grid" },
-                      { id: "CARDS", label: "Luxury Cards" },
-                      { id: "LIST", label: "Minimalist List" },
-                    ].map((mode) => (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() => setDisplayLayout(mode.id as any)}
-                        className={`py-2 px-3 rounded-xl text-xs font-medium border transition-all ${
-                          displayLayout === mode.id
-                            ? "bg-primary text-black border-gold-500 font-semibold"
-                            : "bg-secondary/40 text-foreground border-border hover:bg-secondary"
-                        }`}
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p className="rounded-xl border border-border p-4 text-xs text-muted-foreground">Guest style: compact cream photo cards on a dark background, with category pills and clear prices.</p>
 
                 <div className="pt-2 flex items-center gap-2">
                   <input
@@ -529,6 +508,7 @@ export function MenusManager({
           menuTitle={selectedQrMenu.title}
           hotelName={hotelName}
           menuSlug={selectedQrMenu.slug}
+          menuId={selectedQrMenu.id}
           qrCodeSvg={selectedQrMenu.qrCodeSvg}
         />
       )}

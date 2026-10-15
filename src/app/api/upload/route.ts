@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { matchesMediaType } from "@/lib/media-validation";
 import { requireAuth } from "@/lib/auth";
 import { saveUploadedFile, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES } from "@/lib/storage";
 
@@ -37,6 +38,9 @@ export async function POST(req: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    if (!matchesMediaType(buffer, mimeType)) {
+      return NextResponse.json({ error: "The file content does not match its media type." }, { status: 400 });
+    }
     const saved = await saveUploadedFile(buffer, file.name, mimeType);
 
     return NextResponse.json({

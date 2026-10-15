@@ -160,3 +160,13 @@ npm run build
 - Configure environment variables (`DATABASE_URL`, `JWT_SECRET`, `NEXT_PUBLIC_APP_URL`).
 - Run `prisma migrate deploy` or `prisma db push` during build.
 - For cloud storage, add `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to automatically route uploads to Cloudinary CDN, or use the built-in local upload engine.
+
+
+## Platform development
+
+The project is expanding to cafes, restaurants and hotels. See [the delivery roadmap](docs/PRODUCT-ROADMAP.md)
+for implemented features and the remaining release scope, and [import/domain setup](docs/IMPORT-AND-DOMAINS.md)
+for reviewed menu capture, permanent QR links, configuration and tests.
+
+Open **Admin → Menus → Import existing menu** to paste text or review photo/PDF extraction.
+Imports create unpublished drafts; photo/PDF extraction requires server-side API configuration.

@@ -1,7 +1,8 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { generateQrSvg, buildPublicMenuUrl } from "@/lib/qr";
+import { generateQrSvg, buildPublicMenuUrl, buildStableMenuUrl } from "@/lib/qr";
 
 interface Params {
   params: { id: string };
@@ -34,11 +35,13 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     const publicUrl = buildPublicMenuUrl(newSlug);
-    const qrCodeSvg = await generateQrSvg(publicUrl);
+    const menuId = randomUUID();
+    const qrCodeSvg = await generateQrSvg(buildStableMenuUrl(menuId));
 
     const duplicated = await db.$transaction(async (tx) => {
       const newMenu = await tx.menu.create({
         data: {
+          id: menuId,
           hotelId: session.hotelId,
           title: newTitle,
           slug: newSlug,

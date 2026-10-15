@@ -1,13 +1,15 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { hashPassword, signSessionToken, setAuthCookie } from "@/lib/auth";
+import { hashPassword, signSessionToken, setAuthCookie, getJwtSecret } from "@/lib/auth";
 import { registerSchema } from "@/validations";
 import { slugify } from "@/lib/utils";
-import { generateQrSvg, buildPublicMenuUrl } from "@/lib/qr";
+import { generateQrSvg, buildStableMenuUrl } from "@/lib/qr";
 import { Role, MenuLayout } from "@prisma/client";
 
 export async function POST(req: Request) {
   try {
+    getJwtSecret(); // Fail before creating an account if signing is misconfigured.
     const body = await req.json();
     const validated = registerSchema.safeParse(body);
 
@@ -72,11 +74,13 @@ export async function POST(req: Request) {
 
       // Create initial Welcome Menu
       const menuSlug = `${finalSlug}-dining`;
-      const publicUrl = buildPublicMenuUrl(menuSlug);
+      const menuId = randomUUID();
+      const publicUrl = buildStableMenuUrl(menuId);
       const qrSvg = await generateQrSvg(publicUrl);
 
       const starterMenu = await tx.menu.create({
         data: {
+          id: menuId,
           hotelId: hotel.id,
           title: "All-Day Dining & Bar",
           slug: menuSlug,

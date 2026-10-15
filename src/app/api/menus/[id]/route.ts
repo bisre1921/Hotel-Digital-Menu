@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { menuSchema } from "@/validations";
-import { generateQrSvg, buildPublicMenuUrl } from "@/lib/qr";
+import { generateQrSvg, buildPublicMenuUrl, buildStableMenuUrl } from "@/lib/qr";
 import { slugify } from "@/lib/utils";
 
 interface Params {
@@ -78,11 +78,8 @@ export async function PUT(req: Request, { params }: Params) {
     }
 
     // Re-generate QR if slug changed or if missing
-    let qrCodeSvg = existing.qrCodeSvg;
+    const qrCodeSvg = await generateQrSvg(buildStableMenuUrl(existing.id));
     const publicUrl = buildPublicMenuUrl(finalSlug);
-    if (finalSlug !== existing.slug || !qrCodeSvg) {
-      qrCodeSvg = await generateQrSvg(publicUrl);
-    }
 
     const updated = await db.menu.update({
       where: { id: params.id },

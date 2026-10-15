@@ -57,14 +57,15 @@ export async function GET() {
 
     // Recent 7 days activity
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const recentEvents = await db.analyticsEvent.findMany({
-      where: {
-        hotelId,
-        createdAt: { gte: sevenDaysAgo },
-      },
-      orderBy: { createdAt: "asc" },
-      take: 200,
-    });
+    const recentEvents = await db.$queryRaw<{ date: string; type: string; count: number }[]>`
+      SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+             type, COUNT(*)::int AS count
+      FROM "AnalyticsEvent"
+      WHERE "hotelId" = ${hotelId}
+        AND "createdAt" >= ${sevenDaysAgo}
+        AND type IN ('QR_SCAN', 'PAGE_VIEW')
+      GROUP BY date, type
+    `;
 
     // Group events by day
     const daysMap: Record<string, { date: string; scans: number; views: number }> = {};
@@ -75,10 +76,10 @@ export async function GET() {
     }
 
     recentEvents.forEach((ev) => {
-      const key = ev.createdAt.toISOString().split("T")[0];
+      const key = ev.date;
       if (daysMap[key]) {
-        if (ev.type === "QR_SCAN") daysMap[key].scans++;
-        if (ev.type === "PAGE_VIEW") daysMap[key].views++;
+        if (ev.type === "QR_SCAN") daysMap[key].scans += ev.count;
+        if (ev.type === "PAGE_VIEW") daysMap[key].views += ev.count;
       }
     });
 
@@ -106,12 +107,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { menuSlug, type, itemId, metadata } = body;
 
-    if (!menuSlug || !type) {
+    if (typeof menuSlug !== "string" || !["PAGE_VIEW", "QR_SCAN", "ITEM_VIEW", "SEARCH"].includes(type) || (itemId != null && typeof itemId !== "string")) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const menu = await db.menu.findUnique({
-      where: { slug: menuSlug },
+      where: { slug: menuSlug, isPublished: true },
       select: { id: true, hotelId: true },
     });
 

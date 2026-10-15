@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { generateQrSvg, buildStableMenuUrl } from "@/lib/qr";
 import { X, Copy, Check, Share2, Download, QrCode } from "lucide-react";
 
 interface GuestShareModalProps {
@@ -10,6 +11,7 @@ interface GuestShareModalProps {
   menuTitle: string;
   hotelName: string;
   menuSlug: string;
+  menuId?: string;
   qrCodeSvg?: string | null;
 }
 
@@ -19,13 +21,22 @@ export function GuestShareModal({
   menuTitle,
   hotelName,
   menuSlug,
+  menuId,
   qrCodeSvg,
 }: GuestShareModalProps) {
   const [copied, setCopied] = useState(false);
 
+  const [stableSvg, setStableSvg] = useState("");
+  useEffect(() => {
+    if (!isOpen || !menuId) return;
+    let active = true;
+    generateQrSvg(buildStableMenuUrl(menuId)).then((svg) => { if (active) setStableSvg(svg); }).catch(() => {});
+    return () => { active = false; };
+  }, [isOpen, menuId]);
+
   if (!isOpen) return null;
 
-  const currentUrl =
+  const currentUrl = menuId ? buildStableMenuUrl(menuId) :
     typeof window !== "undefined"
       ? `${window.location.origin}/menu/${menuSlug}`
       : `/menu/${menuSlug}`;
@@ -87,10 +98,10 @@ export function GuestShareModal({
 
           {/* QR Code Container */}
           <div className="mt-5 p-4 bg-white rounded-2xl mx-auto w-52 h-52 flex items-center justify-center shadow-inner">
-            {qrCodeSvg ? (
+            {(menuId ? stableSvg : qrCodeSvg) ? (
               <div
                 className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
-                dangerouslySetInnerHTML={{ __html: qrCodeSvg }}
+                dangerouslySetInnerHTML={{ __html: menuId ? stableSvg : qrCodeSvg! }}
               />
             ) : (
               <div className="text-xs text-black/60 font-sans">Generating QR code...</div>

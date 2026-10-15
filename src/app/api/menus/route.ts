@@ -1,9 +1,10 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { menuSchema } from "@/validations";
 import { slugify } from "@/lib/utils";
-import { generateQrSvg, buildPublicMenuUrl } from "@/lib/qr";
+import { generateQrSvg, buildPublicMenuUrl, buildStableMenuUrl } from "@/lib/qr";
 
 export async function GET() {
   try {
@@ -66,11 +67,13 @@ export async function POST(req: Request) {
       finalSlug = `${slugify(validated.data.slug)}-${count++}`;
     }
 
+    const menuId = randomUUID();
     const publicUrl = buildPublicMenuUrl(finalSlug);
-    const qrCodeSvg = await generateQrSvg(publicUrl);
+    const qrCodeSvg = await generateQrSvg(buildStableMenuUrl(menuId));
 
     const newMenu = await db.menu.create({
       data: {
+        id: menuId,
         hotelId: session.hotelId,
         title: validated.data.title,
         slug: finalSlug,

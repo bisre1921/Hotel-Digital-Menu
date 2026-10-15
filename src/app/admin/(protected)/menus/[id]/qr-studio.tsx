@@ -27,8 +27,8 @@ export function QRStudio({
 
   const publicUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/menu/${menuSlug}`
-      : `/menu/${menuSlug}`;
+      ? `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/q/${menuId}`
+      : `/q/${menuId}`;
 
   useEffect(() => {
     let active = true;
@@ -96,7 +96,7 @@ export function QRStudio({
 
           <div className="mt-4 text-center">
             <span className="text-[11px] text-muted-foreground font-mono">
-              /menu/{menuSlug}
+              /q/{menuId}
             </span>
           </div>
         </div>
@@ -110,7 +110,7 @@ export function QRStudio({
               Branded QR Code Studio
             </h3>
             <p className="text-xs text-muted-foreground mt-1 font-light">
-              Customize brand colors, download high-definition assets for table stands, or copy the direct public URL.
+              Customize brand colors, download high-definition assets for table stands, or copy the permanent menu link. This QR keeps working when you rename the menu.
             </p>
           </div>
 

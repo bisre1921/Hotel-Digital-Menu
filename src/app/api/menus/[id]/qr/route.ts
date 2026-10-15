@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { generateQrPngDataUrl, generateQrSvg, buildPublicMenuUrl } from "@/lib/qr";
+import { generateQrPngDataUrl, generateQrSvg, buildStableMenuUrl } from "@/lib/qr";
 
 interface Params {
   params: { id: string };
@@ -23,7 +23,7 @@ export async function GET(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Menu not found" }, { status: 404 });
     }
 
-    const publicUrl = buildPublicMenuUrl(menu.slug);
+    const publicUrl = buildStableMenuUrl(menu.id);
 
     if (format === "png") {
       const dataUrl = await generateQrPngDataUrl(publicUrl, {

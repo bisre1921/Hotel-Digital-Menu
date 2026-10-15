@@ -25,7 +25,7 @@ export function MenuSettings({ menu, onUpdate }: MenuSettingsProps) {
   const [slug, setSlug] = useState(menu.slug);
   const [description, setDescription] = useState(menu.description || "");
   const [headerImageUrl, setHeaderImageUrl] = useState(menu.headerImageUrl || "");
-  const [displayLayout, setDisplayLayout] = useState(menu.displayLayout);
+  const displayLayout = "LIST";
   const [isPublished, setIsPublished] = useState(menu.isPublished);
 
   const [saving, setSaving] = useState(false);
@@ -199,31 +199,9 @@ export function MenuSettings({ menu, onUpdate }: MenuSettingsProps) {
           </div>
         </div>
 
-        {/* Layout */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-            Default Guest Display Layout
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: "GRID", label: "Photo Grid" },
-              { id: "CARDS", label: "Luxury Cards" },
-              { id: "LIST", label: "Minimalist List" },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setDisplayLayout(mode.id as any)}
-                className={`py-2 px-3 rounded-xl text-xs font-medium border transition-all ${
-                  displayLayout === mode.id
-                    ? "bg-primary text-black border-gold-500 font-semibold"
-                    : "bg-secondary/40 text-foreground border-border hover:bg-secondary"
-                }`}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
+        <div className="rounded-xl border border-border bg-secondary/30 p-4">
+          <p className="text-sm font-medium">Compact photo cards</p>
+          <p className="mt-1 text-xs text-muted-foreground">Your guest menu uses a dark background, cream cards, clear prices and category pills.</p>
         </div>
 
         {/* Publishing Toggle */}

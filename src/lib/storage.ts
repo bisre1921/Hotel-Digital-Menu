@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { matchesMediaType } from "./media-validation";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 
@@ -11,7 +12,6 @@ export const ALLOWED_IMAGE_TYPES = [
   "image/webp",
   "image/avif",
   "image/gif",
-  "image/svg+xml",
 ];
 
 export const ALLOWED_VIDEO_TYPES = [
@@ -36,7 +36,7 @@ export async function saveUploadedFile(
   const isImage = ALLOWED_IMAGE_TYPES.includes(mimeType);
   const isVideo = ALLOWED_VIDEO_TYPES.includes(mimeType);
 
-  if (!isImage && !isVideo) {
+  if ((!isImage && !isVideo) || !matchesMediaType(buffer, mimeType)) {
     throw new Error(`Unsupported media format: ${mimeType}`);
   }
 
@@ -76,7 +76,13 @@ export async function saveUploadedFile(
   // 2. High-performance local media storage
   await ensureUploadsDir();
 
-  const extension = path.extname(filename) || (isImage ? ".jpg" : ".mp4");
+  // Never preserve an untrusted extension (e.g. HTML disguised as an image).
+  const extensions: Record<string, string> = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+    "image/avif": ".avif", "image/gif": ".gif", "video/mp4": ".mp4",
+    "video/webm": ".webm", "video/quicktime": ".mov",
+  };
+  const extension = extensions[mimeType];
   const randomId = crypto.randomBytes(16).toString("hex");
   const uniqueFilename = `${Date.now()}-${randomId}${extension}`;
   const filePath = path.join(UPLOADS_DIR, uniqueFilename);

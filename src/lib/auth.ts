@@ -1,12 +1,15 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import { db } from "@/lib/db";
 import { Role } from "@prisma/client";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "lux-hotel-jwt-super-secret-key-32-chars-long-minimum-random"
-);
+export function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || new TextEncoder().encode(secret).length < 32) {
+    throw new Error("JWT_SECRET must be configured with at least 32 bytes");
+  }
+  return new TextEncoder().encode(secret);
+}
 
 export const AUTH_COOKIE_NAME = "lux_hotel_token";
 
@@ -31,12 +34,18 @@ export async function signSessionToken(payload: SessionPayload): Promise<string>
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ["HS256"] });
+    if (
+      typeof payload.userId !== "string" || !payload.userId ||
+      typeof payload.hotelId !== "string" || !payload.hotelId ||
+      typeof payload.email !== "string" || typeof payload.name !== "string" ||
+      !Object.values(Role).includes(payload.role as Role)
+    ) return null;
     return payload as unknown as SessionPayload;
   } catch {
     return null;

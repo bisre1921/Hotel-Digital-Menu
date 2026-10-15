@@ -6,6 +6,8 @@ import { formatPrice, slugify } from "../src/lib/utils";
 import { menuSchema, itemSchema, hotelProfileSchema, loginSchema } from "../src/validations";
 import { Role } from "@prisma/client";
 
+process.env.JWT_SECRET = "test-only-secret-at-least-32-bytes-long";
+
 describe("1. Multi-Tenant Authentication & Cryptographic Session Security", () => {
   it("should securely hash and verify passwords with bcrypt", async () => {
     const password = "LuxuryPassword2026!";

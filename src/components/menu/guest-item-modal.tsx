@@ -1,209 +1,83 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Sparkles, Clock, Flame, AlertTriangle, ShieldCheck } from "lucide-react";
-import { MenuItemData } from "./guest-item-card";
+import { motion, useAnimationControls, useDragControls, useReducedMotion } from "framer-motion";
+import { ItemReviews } from "./item-reviews";
+import { X, Clock, Flame, AlertTriangle, Play, Sparkles } from "lucide-react";
+import { type MenuItemData } from "./guest-item-card";
 import { formatPrice } from "@/lib/utils";
-import { DIETARY_OPTIONS, ALLERGEN_OPTIONS } from "@/config/theme";
+import { ALLERGEN_OPTIONS, DIETARY_OPTIONS } from "@/config/theme";
+import styles from "./guest-menu.module.css";
 
-interface GuestItemModalProps {
-  item: MenuItemData | null;
-  onClose: () => void;
-  currencySymbol: string;
-  currency: string;
-  primaryColor?: string;
-}
+interface Props { initialSection?: "reviews"; item: MenuItemData | null; categoryName?: string; onClose: () => void; currencySymbol: string; currency: string; primaryColor?: string; isPreview?: boolean; onRatingUpdate?: (id: string, average: number | null, count: number) => void }
 
-export function GuestItemModal({
-  item,
-  onClose,
-  currencySymbol,
-  currency,
-  primaryColor = "#B89334",
-}: GuestItemModalProps) {
+export function GuestItemModal({ initialSection, item, categoryName, onClose, currencySymbol, currency, isPreview = false, onRatingUpdate }: Props) {
+  const controls = useAnimationControls();
+  const dragControls = useDragControls();
+  const reduceMotion = useReducedMotion();
+  const [expanded, setExpanded] = useState(false);
+  const closing = useRef(false);
+  const dragged = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    if (item) {
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleKeyDown);
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [item, onClose]);
-
+    if (!item) return;
+    setVideoFailed(false);
+    setExpanded(initialSection === "reviews");
+    closing.current = false;
+    const element = dialog.current;
+    const previousOverflow = document.body.style.overflow;
+    element?.showModal();
+    controls.start({ y: 0, opacity: 1, transition: reduceMotion ? { duration: 0 } : { type: "spring", damping: 32, stiffness: 300 } });
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => {
+      if (initialSection === "reviews") element?.querySelector('[aria-label="Dish ratings and reviews"]')?.scrollIntoView({ block: "start" });
+    });
+    return () => { cancelAnimationFrame(focusFrame); element?.close(); document.body.style.overflow = previousOverflow; };
+  }, [item, controls, reduceMotion, initialSection]);
+  async function dismiss() {
+    if (closing.current) return;
+    closing.current = true;
+    await controls.start({ y: "100%", opacity: 0, transition: { duration: reduceMotion ? 0 : .24, ease: "easeIn" } });
+    close.current();
+  }
   if (!item) return null;
+  const discounted = item.discountPrice != null && item.discountPrice < item.price;
+  return <dialog ref={dialog} className={styles.dialog} aria-labelledby="dish-title" onCancel={(event) => { event.preventDefault(); void dismiss(); }} onClick={(event) => { if (event.target === event.currentTarget) void dismiss(); }}>
+    <motion.div className={styles.sheet} initial={{ y: "100%", opacity: 0 }} animate={controls}
+      style={{ height: expanded ? "94dvh" : "82dvh" }} drag="y" dragListener={false} dragControls={dragControls}
+      dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: .08, bottom: .65 }}
+      onDragStart={() => { dragged.current = true; }}
+      onDragEnd={(_event, info) => {
+        if (info.offset.y > 100 || info.velocity.y > 650) { void dismiss(); return; }
+        if (info.offset.y < -35 || info.velocity.y < -450) setExpanded(true);
+        controls.start({ y: 0, transition: reduceMotion ? { duration: 0 } : { type: "spring", damping: 30, stiffness: 350 } });
+      }}>
+      <button type="button" className={styles.sheetHandle} aria-label={expanded ? "Collapse dish details" : "Expand dish details"}
+        onPointerDown={(event) => { dragged.current = false; dragControls.start(event); }}
+        onClick={() => { if (!dragged.current) setExpanded((value) => !value); }}><span /></button>
+      <div className={styles.sheetScroll}>
 
-  return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity"
-        />
-
-        {/* Modal Content */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}
-          className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-border/70 shadow-luxury z-10 no-scrollbar"
-        >
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gold-500/50"
-            aria-label="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          {/* Media Section: Image or Video */}
-          <div className="relative aspect-video w-full bg-muted overflow-hidden">
-            {item.videoUrl ? (
-              <video
-                src={item.videoUrl}
-                controls
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="w-full h-full object-cover"
-              />
-            ) : item.imageUrl ? (
-              <Image
-                src={item.imageUrl}
-                alt={item.name}
-                fill
-                className="object-cover"
-                priority
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-secondary/50">
-                <span className="font-serif italic text-muted-foreground text-lg">
-                  Artisanal Dish Presentation
-                </span>
-              </div>
-            )}
-
-            {/* Chef special badge */}
-            {item.isChefSpecial && (
-              <div className="absolute bottom-3 left-3 px-3 py-1 rounded-full bg-black/80 backdrop-blur-md text-gold-400 border border-gold-500/40 text-xs font-medium tracking-wide uppercase flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> Chef&apos;s Signature Creation
-              </div>
-            )}
-          </div>
-
-          {/* Details */}
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-foreground">
-                  {item.name}
-                </h3>
-                <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                  {item.prepTimeMinutes && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> {item.prepTimeMinutes} mins prep
-                    </span>
-                  )}
-                  {item.calories && (
-                    <span className="inline-flex items-center gap-1">
-                      <Flame className="w-3.5 h-3.5 text-amber-500" /> {item.calories} calories
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Price */}
-              <div className="text-right shrink-0">
-                {item.discountPrice ? (
-                  <div>
-                    <span className="text-2xl font-serif font-semibold text-gold-400">
-                      {formatPrice(item.discountPrice, currency, currencySymbol)}
-                    </span>
-                    <span className="block text-sm text-muted-foreground line-through">
-                      {formatPrice(item.price, currency, currencySymbol)}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-2xl font-serif font-semibold text-foreground">
-                    {formatPrice(item.price, currency, currencySymbol)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Description */}
-            {item.description && (
-              <p className="text-sm sm:text-base text-foreground/80 font-light leading-relaxed">
-                {item.description}
-              </p>
-            )}
-
-            {/* Dietary Tags */}
-            {item.dietaryTags.length > 0 && (
-              <div>
-                <h5 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
-                  Dietary Information
-                </h5>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {item.dietaryTags.map((tag) => {
-                    const info = DIETARY_OPTIONS.find((d) => d.value === tag);
-                    return (
-                      <span
-                        key={tag}
-                        className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
-                          info?.color || "bg-secondary text-foreground border-border"
-                        }`}
-                      >
-                        {info?.label || tag}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Allergens warning */}
-            {item.allergens.length > 0 && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-1">
-                  <AlertTriangle className="w-4 h-4" /> Contains Allergens
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap text-xs text-foreground/80">
-                  {item.allergens.map((all) => {
-                    const info = ALLERGEN_OPTIONS.find((a) => a.value === all);
-                    return (
-                      <span key={all} className="font-medium underline decoration-amber-500/50">
-                        {info?.label || all}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Availability status */}
-            {!item.isAvailable && (
-              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/25 text-destructive text-xs font-medium flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                This dish is currently unavailable or sold out for today&apos;s service.
-              </div>
-            )}
-          </div>
-        </motion.div>
+      <div className={styles.modalMedia}>
+        {item.videoUrl && !videoFailed ? <video onError={() => setVideoFailed(true)} src={item.videoUrl} controls autoPlay muted playsInline loop preload="metadata" poster={item.imageUrl || undefined} /> : item.imageUrl ? <Image src={item.imageUrl} alt={item.name} fill sizes="448px" unoptimized className={styles.cover} /> : <span className={styles.mediaPlaceholder}><Flame size={44} strokeWidth={1.3} /><span>Good food, worth discovering.</span></span>}
+        <button type="button" className={styles.closeButton} onClick={() => void dismiss()} aria-label="Close dish details" autoFocus><X size={20} /></button>
+        {item.videoUrl && !videoFailed && <span className={styles.showcase}><Play size={12} fill="currentColor" /> Food showcase</span>}
       </div>
-    </AnimatePresence>
-  );
+      <div className={styles.modalBody}>
+        <div className={styles.modalHeading}><div><p className={styles.categoryLabel}>{categoryName || "On the menu"}</p><h2 id="dish-title">{item.name}</h2></div><div className={styles.modalPrice}>{formatPrice(discounted ? item.discountPrice! : item.price, currency, currencySymbol)}{discounted && <s>{formatPrice(item.price, currency, currencySymbol)}</s>}</div></div>
+        {!item.isAvailable && <p className={styles.unavailableNotice}>Sold out today. Ask the team for another recommendation.</p>}
+        {item.isChefSpecial && <p className={styles.special}><Sparkles size={14} /> A chef’s special</p>}
+        {item.description && <p className={styles.description}>{item.description}</p>}
+        <div className={styles.dishFacts}>{item.prepTimeMinutes != null && <span><Clock size={14} />{item.prepTimeMinutes} min</span>}{item.calories != null && <span><Flame size={14} />{item.calories} kcal</span>}</div>
+        {!!item.dietaryTags.length && <div className={styles.dietaryTags}>{item.dietaryTags.map((tag) => <span key={tag}>{DIETARY_OPTIONS.find((option) => option.value === tag)?.label || tag.replaceAll("_", " ")}</span>)}</div>}
+        {!!item.allergens.length && <div className={styles.allergenBox}><h3><AlertTriangle size={15} /> Allergen information</h3><p>{item.allergens.map((tag) => ALLERGEN_OPTIONS.find((option) => option.value === tag)?.label || tag.replaceAll("_", " ")).join(" · ")}</p></div>}
+        <ItemReviews key={item.id} itemId={item.id} isPreview={isPreview} onSummary={(average, count) => onRatingUpdate?.(item.id, average, count)} />
+        <p className={styles.modalNote}>Please tell the team about any food allergies before ordering.</p>
+      </div>
+      </div>
+    </motion.div>
+  </dialog>;
 }

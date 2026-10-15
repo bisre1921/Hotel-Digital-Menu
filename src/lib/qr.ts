@@ -54,3 +54,9 @@ export function buildPublicMenuUrl(slug: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   return `${base}/menu/${slug}`;
 }
+
+/** Menu identity survives title/slug changes. Printed codes must use this URL. */
+export function buildStableMenuUrl(id: string): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/q/${encodeURIComponent(id)}`;
+}

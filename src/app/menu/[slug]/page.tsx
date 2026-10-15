@@ -11,7 +11,7 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const menu = await db.menu.findUnique({
-    where: { slug: params.slug },
+    where: { slug: params.slug, isPublished: true },
     include: { hotel: true },
   });
 
@@ -85,5 +85,17 @@ export default async function PublicMenuPage({ params, searchParams }: Props) {
     }
   }
 
-  return <GuestMenuView menu={menu as any} isPreview={isPreview} />;
+  const summaries = await db.itemReview.groupBy({
+    by: ["itemId"],
+    where: { itemId: { in: menu.categories.flatMap((category) => category.items.map((item) => item.id)) } },
+    _avg: { rating: true }, _count: { _all: true },
+  });
+  const ratings = new Map(summaries.map((summary) => [summary.itemId, summary]));
+  const guestMenu = { ...menu, categories: menu.categories.map((category) => ({
+    ...category, items: category.items.map((item) => ({ ...item,
+      ratingAverage: ratings.get(item.id)?._avg.rating ?? null,
+      reviewCount: ratings.get(item.id)?._count._all ?? 0,
+    })),
+  })) };
+  return <GuestMenuView menu={guestMenu} isPreview={isPreview} />;
 }

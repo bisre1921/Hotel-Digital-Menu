@@ -1,6 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  async headers() {
+    return [{
+      source: "/uploads/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Content-Security-Policy", value: "sandbox; default-src 'none'" },
+      ],
+    }];
+  },
   images: {
     remotePatterns: [
       {

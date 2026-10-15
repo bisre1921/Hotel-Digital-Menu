@@ -29,6 +29,14 @@ export async function PUT(req: Request, { params }: Params) {
       );
     }
 
+    const destination = await db.menuCategory.findFirst({
+      where: { id: validated.data.categoryId, menu: { hotelId: session.hotelId } },
+      select: { id: true },
+    });
+    if (!destination) {
+      return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    }
+
     const updated = await db.menuItem.update({
       where: { id: params.id },
       data: {

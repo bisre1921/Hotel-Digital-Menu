@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { Role } from "@prisma/client";
 
 export function getJwtSecret(): Uint8Array {
@@ -52,17 +52,56 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
-  const cookieStore = cookies();
-  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+export async function getSession(req?: Request): Promise<SessionPayload | null> {
+  let token: string | undefined;
+
+  // 1. Check passed Request Authorization header
+  if (req) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+      token = authHeader.slice(7).trim();
+    }
+  }
+
+  // 2. Check next/headers() Authorization header if available
+  if (!token) {
+    try {
+      const headerList = headers();
+      const authHeader = headerList.get("authorization");
+      if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+        token = authHeader.slice(7).trim();
+      }
+    } catch {
+      // In contexts without header access
+    }
+  }
+
+  // 3. Fallback to auth cookie
+  if (!token) {
+    try {
+      const cookieStore = cookies();
+      token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+    } catch {
+      // In contexts without cookie access
+    }
+  }
+
   if (!token) return null;
   return verifySessionToken(token);
 }
 
-export async function requireAuth(): Promise<SessionPayload> {
-  const session = await getSession();
+export async function requireAuth(req?: Request): Promise<SessionPayload> {
+  const session = await getSession(req);
   if (!session) {
     throw new Error("Unauthorized");
+  }
+  return session;
+}
+
+export async function requireRole(allowedRoles: Role[], req?: Request): Promise<SessionPayload> {
+  const session = await requireAuth(req);
+  if (!allowedRoles.includes(session.role)) {
+    throw new Error("Forbidden: Insufficient permissions");
   }
   return session;
 }
@@ -80,23 +119,31 @@ export async function verifyTenantOwnership(hotelId: string): Promise<SessionPay
 }
 
 export async function setAuthCookie(token: string) {
-  const cookieStore = cookies();
-  cookieStore.set(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  });
+  try {
+    const cookieStore = cookies();
+    cookieStore.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+  } catch {
+    // In environments where cookies() cannot be directly mutated
+  }
 }
 
 export async function clearAuthCookie() {
-  const cookieStore = cookies();
-  cookieStore.set(AUTH_COOKIE_NAME, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
+  try {
+    const cookieStore = cookies();
+    cookieStore.set(AUTH_COOKIE_NAME, "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+  } catch {
+    // In environments where cookies() cannot be directly mutated
+  }
 }

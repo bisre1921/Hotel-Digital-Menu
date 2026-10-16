@@ -1,13 +1,23 @@
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminDashboardClient } from "./dashboard-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboardPage() {
   const session = await getSession();
+  if (!session) {
+    redirect("/admin/login");
+  }
 
   const hotel = await db.hotel.findUnique({
-    where: { id: session!.hotelId },
+    where: { id: session.hotelId },
   });
+
+  if (!hotel) {
+    redirect("/admin/login");
+  }
 
   const menus = await db.menu.findMany({
     where: { hotelId: session!.hotelId },

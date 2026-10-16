@@ -10,7 +10,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
 export async function POST(req: Request) {
-  const session = await getSession();
+  const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Sign in to import a menu." }, { status: 401 });
   if (Number(req.headers.get("content-length")) > MAX_BYTES + 65536) {
     return NextResponse.json({ error: "Upload at most 10 MB in total." }, { status: 413 });

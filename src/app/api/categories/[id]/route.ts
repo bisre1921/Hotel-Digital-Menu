@@ -7,9 +7,43 @@ interface Params {
   params: { id: string };
 }
 
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request, { params }: Params) {
+  try {
+    const session = await requireAuth(req);
+
+    const category = await db.menuCategory.findFirst({
+      where: {
+        id: params.id,
+        menu: { hotelId: session.hotelId },
+      },
+      include: {
+        menu: {
+          select: { id: true, title: true, slug: true },
+        },
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
+    });
+
+    if (!category) {
+      return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(category);
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Failed to fetch category" }, { status: 500 });
+  }
+}
+
 export async function PUT(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const category = await db.menuCategory.findUnique({
@@ -48,7 +82,7 @@ export async function PUT(req: Request, { params }: Params) {
 
 export async function DELETE(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
 
     const category = await db.menuCategory.findUnique({
       where: { id: params.id },

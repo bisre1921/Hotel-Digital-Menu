@@ -10,7 +10,7 @@ interface Params {
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
 
     const original = await db.menu.findFirst({
       where: { id: params.id, hotelId: session.hotelId },

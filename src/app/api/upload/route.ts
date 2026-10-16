@@ -6,7 +6,7 @@ import { saveUploadedFile, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES } from "@/li
 export async function POST(req: Request) {
   try {
     // Require authenticated hotel user
-    await requireAuth();
+    await requireAuth(req);
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

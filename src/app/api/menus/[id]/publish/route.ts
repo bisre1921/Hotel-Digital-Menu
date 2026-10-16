@@ -8,7 +8,7 @@ interface Params {
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json().catch(() => ({}));
 
     const menu = await db.menu.findFirst({

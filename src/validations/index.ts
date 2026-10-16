@@ -80,3 +80,39 @@ export const reorderSchema = z.object({
     })
   ),
 });
+
+export const reorderMenusSchema = reorderSchema;
+
+export const createHotelUserSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["OWNER", "MANAGER", "STAFF"]).default("STAFF"),
+});
+
+export const updateHotelUserRoleSchema = z.object({
+  role: z.enum(["OWNER", "MANAGER", "STAFF"]),
+});
+
+export const bulkItemActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("set_availability"),
+    itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
+    isAvailable: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("move_category"),
+    itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
+    targetCategoryId: z.string().min(1, "Target category ID is required"),
+  }),
+  z.object({
+    action: z.literal("adjust_prices"),
+    itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
+    percentage: z.number().optional(),
+    fixedAmount: z.number().optional(),
+  }),
+  z.object({
+    action: z.literal("delete"),
+    itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
+  }),
+]);

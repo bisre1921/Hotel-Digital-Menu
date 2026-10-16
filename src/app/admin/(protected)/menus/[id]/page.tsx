@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MenuEditor } from "./menu-editor";
 
+export const dynamic = "force-dynamic";
+
 interface Props {
   params: { id: string };
 }

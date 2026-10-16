@@ -8,7 +8,7 @@ interface Params {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json().catch(() => ({}));
 
     const item = await db.menuItem.findUnique({

@@ -7,9 +7,76 @@ interface Params {
   params: { id: string };
 }
 
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request, { params }: Params) {
+  try {
+    const session = await requireAuth(req);
+
+    const item = await db.menuItem.findFirst({
+      where: {
+        id: params.id,
+        category: {
+          menu: {
+            hotelId: session.hotelId,
+          },
+        },
+      },
+      include: {
+        category: {
+          include: {
+            menu: {
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+              },
+            },
+          },
+        },
+        reviews: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            name: true,
+            rating: true,
+            comment: true,
+            createdAt: true,
+          },
+        },
+        _count: {
+          select: { reviews: true },
+        },
+      },
+    });
+
+    if (!item) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    }
+
+    // Compute average rating
+    const ratingAggregate = await db.itemReview.aggregate({
+      where: { itemId: params.id },
+      _avg: { rating: true },
+    });
+
+    return NextResponse.json({
+      ...item,
+      averageRating: ratingAggregate._avg.rating || null,
+      totalReviews: item._count.reviews,
+    });
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Failed to fetch item" }, { status: 500 });
+  }
+}
+
 export async function PUT(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const item = await db.menuItem.findUnique({
@@ -66,7 +133,7 @@ export async function PUT(req: Request, { params }: Params) {
 
 export async function DELETE(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
 
     const item = await db.menuItem.findUnique({
       where: { id: params.id },

@@ -3,9 +3,55 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { categorySchema, reorderSchema } from "@/validations";
 
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  try {
+    const session = await requireAuth(req);
+    const { searchParams } = new URL(req.url);
+    const menuId = searchParams.get("menuId");
+    const includeItems = searchParams.get("includeItems") === "true";
+
+    const where: any = {
+      menu: { hotelId: session.hotelId },
+    };
+
+    if (menuId) {
+      where.menuId = menuId;
+    }
+
+    const categories = await db.menuCategory.findMany({
+      where,
+      include: {
+        menu: {
+          select: { id: true, title: true, slug: true },
+        },
+        _count: {
+          select: { items: true },
+        },
+        ...(includeItems
+          ? {
+              items: {
+                orderBy: { orderIndex: "asc" },
+              },
+            }
+          : {}),
+      },
+      orderBy: { orderIndex: "asc" },
+    });
+
+    return NextResponse.json(categories);
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Failed to fetch categories" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
     const { menuId, ...rest } = body;
 
@@ -51,7 +97,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, category });
+    return NextResponse.json({ success: true, category }, { status: 201 });
   } catch (error) {
     console.error("Create category error:", error);
     return NextResponse.json({ error: "Failed to create category" }, { status: 500 });
@@ -60,7 +106,7 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const validated = reorderSchema.safeParse(body);

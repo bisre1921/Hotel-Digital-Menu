@@ -3,9 +3,9 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hotelProfileSchema } from "@/validations";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const hotel = await db.hotel.findUnique({
       where: { id: session.hotelId },
       include: {
@@ -30,7 +30,7 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const validated = hotelProfileSchema.safeParse(body);

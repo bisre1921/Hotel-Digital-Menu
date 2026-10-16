@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ProfileForm } from "./profile-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function HotelProfilePage() {
   const session = await getSession();
   if (!session) redirect("/admin/login");

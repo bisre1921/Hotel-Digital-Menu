@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MenuImportStudio } from "./import-studio";
 
+export const dynamic = "force-dynamic";
+
 export default async function ImportPage() {
   const session = await getSession();
   if (!session) redirect("/admin/login");

@@ -11,7 +11,7 @@ interface Params {
 
 export async function GET(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
 
     const menu = await db.menu.findFirst({
       where: {
@@ -46,7 +46,7 @@ export async function GET(req: Request, { params }: Params) {
 
 export async function PUT(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const validated = menuSchema.safeParse(body);
@@ -114,7 +114,7 @@ export async function PUT(req: Request, { params }: Params) {
 
 export async function DELETE(req: Request, { params }: Params) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
 
     const existing = await db.menu.findFirst({
       where: { id: params.id, hotelId: session.hotelId },

@@ -6,7 +6,7 @@ import { buildStableMenuUrl, generateQrSvg } from "@/lib/qr";
 import { slugify } from "@/lib/utils";
 
 export async function POST(req: Request) {
-  const session = await getSession();
+  const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "Sign in to save your import." }, { status: 401 });
   try {
     const parsed = importCommitSchema.safeParse(await req.json());

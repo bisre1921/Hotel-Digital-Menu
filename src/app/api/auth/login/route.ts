@@ -49,8 +49,9 @@ export async function POST(req: Request) {
 
     await setAuthCookie(token);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
+      token,
       user: {
         id: user.id,
         email: user.email,
@@ -66,8 +67,21 @@ export async function POST(req: Request) {
         logoUrl: user.hotel.logoUrl,
       },
     });
-  } catch (error) {
+
+    response.cookies.set("lux_hotel_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
+  } catch (error: any) {
     console.error("Login error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "Internal server error", details: String(error) },
+      { status: 500 }
+    );
   }
 }

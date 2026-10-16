@@ -6,12 +6,36 @@ import { menuSchema } from "@/validations";
 import { slugify } from "@/lib/utils";
 import { generateQrSvg, buildPublicMenuUrl, buildStableMenuUrl } from "@/lib/qr";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search")?.trim();
+    const published = searchParams.get("published");
+    const layout = searchParams.get("layout");
+
+    const where: any = { hotelId: session.hotelId };
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { slug: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    if (published === "true") {
+      where.isPublished = true;
+    } else if (published === "false") {
+      where.isPublished = false;
+    }
+
+    if (layout) {
+      where.displayLayout = layout;
+    }
 
     const menus = await db.menu.findMany({
-      where: { hotelId: session.hotelId },
+      where,
       include: {
         _count: {
           select: {
@@ -50,7 +74,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuth(req);
     const body = await req.json();
 
     const validated = menuSchema.safeParse(body);

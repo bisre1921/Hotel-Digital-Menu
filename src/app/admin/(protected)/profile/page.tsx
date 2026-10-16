@@ -15,5 +15,14 @@ export default async function HotelProfilePage() {
 
   if (!hotel) redirect("/admin/login");
 
-  return <ProfileForm initialHotel={hotel as any} />;
+  return (
+    <ProfileForm
+      initialHotel={hotel as any}
+      currentUser={{
+        id: session.userId,
+        role: session.role,
+        email: session.email,
+      }}
+    />
+  );
 }

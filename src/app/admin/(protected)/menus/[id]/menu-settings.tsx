@@ -25,7 +25,9 @@ export function MenuSettings({ menu, onUpdate }: MenuSettingsProps) {
   const [slug, setSlug] = useState(menu.slug);
   const [description, setDescription] = useState(menu.description || "");
   const [headerImageUrl, setHeaderImageUrl] = useState(menu.headerImageUrl || "");
-  const displayLayout = "LIST";
+  const [displayLayout, setDisplayLayout] = useState<"GRID" | "LIST" | "CARDS" | "MAGAZINE">(
+    menu.displayLayout || "CARDS"
+  );
   const [isPublished, setIsPublished] = useState(menu.isPublished);
 
   const [saving, setSaving] = useState(false);
@@ -199,9 +201,29 @@ export function MenuSettings({ menu, onUpdate }: MenuSettingsProps) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-secondary/30 p-4">
-          <p className="text-sm font-medium">Compact photo cards</p>
-          <p className="mt-1 text-xs text-muted-foreground">Your guest menu uses a dark background, cream cards, clear prices and category pills.</p>
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Guest Display Layout
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(["CARDS", "GRID", "LIST", "MAGAZINE"] as const).map((layoutOpt) => (
+              <button
+                key={layoutOpt}
+                type="button"
+                onClick={() => setDisplayLayout(layoutOpt)}
+                className={`py-2 px-3 rounded-xl text-xs font-semibold uppercase tracking-wider border transition-all ${
+                  displayLayout === layoutOpt
+                    ? "bg-primary text-black border-gold-500"
+                    : "bg-secondary/40 text-foreground border-border hover:bg-secondary"
+                }`}
+              >
+                {layoutOpt}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Your guest menu uses a dark background, cream cards, clear prices and category pills.
+          </p>
         </div>
 
         {/* Publishing Toggle */}

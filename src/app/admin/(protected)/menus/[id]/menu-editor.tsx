@@ -22,6 +22,16 @@ import {
   AlertCircle,
   Clock,
   Flame,
+  CheckSquare,
+  Square,
+  FolderInput,
+  Percent,
+  DollarSign,
+  Copy,
+  Check,
+  X,
+  Zap,
+  ScanLine,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { CategoryModal } from "./category-modal";
@@ -29,6 +39,55 @@ import { DishModal, DishFormData } from "./dish-modal";
 import { QRStudio } from "./qr-studio";
 import { MenuSettings } from "./menu-settings";
 import { DIETARY_OPTIONS } from "@/config/theme";
+
+const STARTER_TEMPLATES = [
+  {
+    id: "fine-dining",
+    label: "Fine Dining",
+    subtitle: "5 classic courses",
+    categories: [
+      { name: "Appetizers & Starters", description: "Small plates and seasonal beginnings" },
+      { name: "Soups & Artisanal Salads", description: "Farm-fresh greens and chef broths" },
+      { name: "Main Entrées", description: "Signature culinary creations" },
+      { name: "Sides & Accompaniments", description: "Crafted to share at the table" },
+      { name: "Desserts & Digestifs", description: "Sweet finales and pairings" },
+    ],
+  },
+  {
+    id: "cafe-bistro",
+    label: "All-Day Café & Bistro",
+    subtitle: "5 café categories",
+    categories: [
+      { name: "Espresso & Hot Drinks", description: "Specialty roasted coffee and teas" },
+      { name: "Breakfast & Brunch", description: "Morning favorites served fresh" },
+      { name: "Sandwiches & Bowls", description: "Artisan breads and wholesome bowls" },
+      { name: "Pastries & Bakery", description: "Baked fresh every morning" },
+      { name: "Cold Drinks & Fresh Juices", description: "Pressed juices, smoothies, and sodas" },
+    ],
+  },
+  {
+    id: "lounge-bar",
+    label: "Cocktail & Wine Lounge",
+    subtitle: "4 bar sections",
+    categories: [
+      { name: "Signature Cocktails", description: "House mixology and timeless classics" },
+      { name: "Wines & Champagne", description: "Curated vintages by the glass or bottle" },
+      { name: "Spirits & Craft Beer", description: "Single malts, gins, and local brews" },
+      { name: "Bar Bites & Tapas", description: "Savory plates to pair with your drink" },
+    ],
+  },
+  {
+    id: "room-service",
+    label: "In-Room Dining",
+    subtitle: "4 suite dining sections",
+    categories: [
+      { name: "Morning Breakfast", description: "Delivered warm to your suite" },
+      { name: "All-Day Comforts", description: "Classic hotel favorites and mains" },
+      { name: "Light Fare & Salads", description: "Fresh, nourishing selections" },
+      { name: "Late Night & Refreshments", description: "Sweet treats and chilled beverages" },
+    ],
+  },
+];
 
 interface Item {
   id: string;
@@ -92,13 +151,85 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [templateLoading, setTemplateLoading] = useState<string | null>(null);
 
   // Dish Modal State
   const [isDishModalOpen, setIsDishModalOpen] = useState(false);
   const [targetCategoryId, setTargetCategoryId] = useState<string>("");
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  // Inline Quick-Add State per category
+  const [quickAdd, setQuickAdd] = useState<
+    Record<string, { name: string; price: string; description: string; saving?: boolean }>
+  >({});
+
+  // Inline Price Edit State
+  const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>("");
+  const [duplicatingItemId, setDuplicatingItemId] = useState<string | null>(null);
+
+  // Bulk Item Operations State (/api/items/bulk)
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [bulkMoveCategoryId, setBulkMoveCategoryId] = useState<string>("");
+  const [bulkPriceMode, setBulkPriceMode] = useState<"percentage" | "fixed">("percentage");
+  const [bulkPriceValue, setBulkPriceValue] = useState<string>("");
+
   const hotel = menu.hotel;
+
+  const toggleSelectItem = (itemId: string) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const toggleSelectCategory = (category: Category) => {
+    const catItemIds = category.items.map((i) => i.id);
+    const allSelected = catItemIds.length > 0 && catItemIds.every((id) => selectedItemIds.includes(id));
+    if (allSelected) {
+      setSelectedItemIds((prev) => prev.filter((id) => !catItemIds.includes(id)));
+    } else {
+      setSelectedItemIds((prev) => Array.from(new Set([...prev, ...catItemIds])));
+    }
+  };
+
+  const runBulkAction = async (payload: Record<string, any>) => {
+    if (selectedItemIds.length === 0) return;
+    setBulkLoading(true);
+    setBulkMessage(null);
+    try {
+      const res = await fetch("/api/items/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          itemIds: selectedItemIds,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Bulk action failed");
+      }
+
+      // Refresh menu state from API so UI reflects exact DB state
+      const menuRes = await fetch(`/api/menus/${menu.id}`);
+      if (menuRes.ok) {
+        const updatedMenu = await menuRes.json();
+        setMenu((prev) => ({ ...prev, categories: updatedMenu.categories || prev.categories }));
+      }
+      setBulkMessage(data.message || "Bulk update completed");
+      if (payload.action === "delete") {
+        setSelectedItemIds([]);
+      }
+      router.refresh();
+      setTimeout(() => setBulkMessage(null), 4000);
+    } catch (err: any) {
+      alert(err.message || "Bulk operation failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   // Category CRUD
   const handleSaveCategory = async (data: { name: string; description: string; imageUrl?: string }) => {
@@ -163,6 +294,38 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
     });
   };
 
+  const handleApplyTemplate = async (templateId: string) => {
+    const tpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl) return;
+    setTemplateLoading(templateId);
+    try {
+      const created: Category[] = [];
+      for (const cat of tpl.categories) {
+        const res = await fetch("/api/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: cat.name,
+            description: cat.description,
+            menuId: menu.id,
+          }),
+        });
+        const json = await res.json();
+        if (res.ok && json.category) {
+          created.push({ ...json.category, items: [] });
+        }
+      }
+      if (created.length > 0) {
+        setMenu((prev) => ({
+          ...prev,
+          categories: [...prev.categories, ...created],
+        }));
+      }
+    } finally {
+      setTemplateLoading(null);
+    }
+  };
+
   // Dish CRUD
   const openAddDish = (catId: string) => {
     setTargetCategoryId(catId);
@@ -209,6 +372,124 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
         }));
       }
     }
+  };
+
+  const handleQuickAddDish = async (catId: string, e: React.FormEvent) => {
+    e.preventDefault();
+    const entry = quickAdd[catId] || { name: "", price: "", description: "" };
+    const parsedPrice = parseFloat(entry.price);
+    if (!entry.name.trim() || Number.isNaN(parsedPrice) || parsedPrice < 0) return;
+
+    setQuickAdd((prev) => ({
+      ...prev,
+      [catId]: { ...entry, saving: true },
+    }));
+
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId: catId,
+          name: entry.name.trim(),
+          description: entry.description.trim() || null,
+          price: parsedPrice,
+          isAvailable: true,
+          isChefSpecial: false,
+          isFeatured: false,
+          dietaryTags: [],
+          allergens: [],
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.item) {
+        setMenu((prev) => ({
+          ...prev,
+          categories: prev.categories.map((c) =>
+            c.id === catId ? { ...c, items: [...c.items, json.item] } : c
+          ),
+        }));
+        setQuickAdd((prev) => ({
+          ...prev,
+          [catId]: { name: "", price: "", description: "", saving: false },
+        }));
+      } else {
+        alert(json.error || "Could not quick-add dish");
+        setQuickAdd((prev) => ({
+          ...prev,
+          [catId]: { ...entry, saving: false },
+        }));
+      }
+    } catch {
+      alert("Could not quick-add dish");
+      setQuickAdd((prev) => ({
+        ...prev,
+        [catId]: { ...entry, saving: false },
+      }));
+    }
+  };
+
+  const handleDuplicateDish = async (item: Item) => {
+    setDuplicatingItemId(item.id);
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId: item.categoryId,
+          name: `${item.name} (Copy)`,
+          description: item.description,
+          price: item.price,
+          discountPrice: item.discountPrice,
+          imageUrl: item.imageUrl,
+          videoUrl: item.videoUrl,
+          isAvailable: item.isAvailable,
+          isChefSpecial: item.isChefSpecial,
+          isFeatured: item.isFeatured,
+          calories: item.calories,
+          prepTimeMinutes: item.prepTimeMinutes,
+          dietaryTags: item.dietaryTags,
+          allergens: item.allergens,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.item) {
+        setMenu((prev) => ({
+          ...prev,
+          categories: prev.categories.map((c) =>
+            c.id === item.categoryId ? { ...c, items: [...c.items, json.item] } : c
+          ),
+        }));
+      }
+    } finally {
+      setDuplicatingItemId(null);
+    }
+  };
+
+  const handleSaveInlinePrice = async (item: Item) => {
+    const nextPrice = parseFloat(editingPriceValue);
+    if (Number.isNaN(nextPrice) || nextPrice < 0) {
+      setEditingPriceItemId(null);
+      return;
+    }
+    setEditingPriceItemId(null);
+    // Optimistic update
+    setMenu((prev) => ({
+      ...prev,
+      categories: prev.categories.map((c) => ({
+        ...c,
+        items: c.items.map((i) => (i.id === item.id ? { ...i, price: nextPrice } : i)),
+      })),
+    }));
+
+    await fetch(`/api/items/${item.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...item,
+        price: nextPrice,
+      }),
+    });
   };
 
   const handleDeleteDish = async (itemId: string, catId: string) => {
@@ -301,6 +582,12 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/admin/menus/import"
+            className="py-2.5 px-4 rounded-xl text-xs font-semibold uppercase tracking-wider border border-border/80 bg-secondary/40 hover:bg-secondary text-foreground flex items-center gap-1.5 transition-colors"
+          >
+            <ScanLine className="w-4 h-4 text-gold-400" /> AI Import Menu
+          </Link>
           <a
             href={`/menu/${menu.slug}${!menu.isPublished ? "?preview=true" : ""}`}
             target="_blank"
@@ -348,7 +635,7 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                 Menu Courses & Culinary Selections
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5 font-light">
-                Add courses, adjust prices, toggle daily availability, and drag or reorder dishes.
+                Use the inline Quick-Add bar inside any category for fast entry, click any price to edit inline, or open the full Dish Editor for photos &amp; allergens.
               </p>
             </div>
 
@@ -363,28 +650,201 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
             </button>
           </div>
 
+          {bulkMessage && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{bulkMessage}</span>
+            </div>
+          )}
+
+          {/* Bulk Operations Bar (/api/items/bulk) */}
+          {selectedItemIds.length > 0 && (
+            <div className="p-4 rounded-2xl bg-card border-2 border-gold-500/50 shadow-elevated space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-gold-500/20 text-gold-400 text-xs font-bold">
+                    {selectedItemIds.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItemIds([])}
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={bulkLoading}
+                    onClick={() => runBulkAction({ action: "set_availability", isAvailable: true })}
+                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50"
+                  >
+                    Mark Available
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkLoading}
+                    onClick={() => runBulkAction({ action: "set_availability", isAvailable: false })}
+                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-500 border border-amber-500/30 hover:bg-amber-500/25 disabled:opacity-50"
+                  >
+                    Mark Sold Out (86&apos;d)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkLoading}
+                    onClick={() => {
+                      if (confirm(`Delete ${selectedItemIds.length} selected dishes permanently?`)) {
+                        runBulkAction({ action: "delete" });
+                      }
+                    }}
+                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-destructive/15 text-destructive border border-destructive/30 hover:bg-destructive/25 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Selected
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-border/60 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Bulk Move Category */}
+                <div className="flex items-center gap-2">
+                  <FolderInput className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <select
+                    aria-label="Target category for bulk move"
+                    value={bulkMoveCategoryId}
+                    onChange={(e) => setBulkMoveCategoryId(e.target.value)}
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-secondary/60 border border-border text-xs text-foreground"
+                  >
+                    <option value="">Move selected to category…</option>
+                    {menu.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={bulkLoading || !bulkMoveCategoryId}
+                    onClick={() =>
+                      runBulkAction({
+                        action: "move_category",
+                        targetCategoryId: bulkMoveCategoryId,
+                      })
+                    }
+                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-secondary hover:bg-gold-500 hover:text-black border border-border disabled:opacity-40"
+                  >
+                    Move
+                  </button>
+                </div>
+
+                {/* Bulk Price Adjustment */}
+                <div className="flex items-center gap-2">
+                  <select
+                    aria-label="Bulk price adjustment mode"
+                    value={bulkPriceMode}
+                    onChange={(e) => setBulkPriceMode(e.target.value as "percentage" | "fixed")}
+                    className="px-2.5 py-1.5 rounded-lg bg-secondary/60 border border-border text-xs text-foreground"
+                  >
+                    <option value="percentage">Adjust by %</option>
+                    <option value="fixed">Adjust by {hotel.currencySymbol}</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={bulkPriceValue}
+                    onChange={(e) => setBulkPriceValue(e.target.value)}
+                    placeholder={bulkPriceMode === "percentage" ? "e.g. 10 or -10" : "e.g. 5 or -2.5"}
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-secondary/60 border border-border text-xs text-foreground min-w-0"
+                  />
+                  <button
+                    type="button"
+                    disabled={bulkLoading || bulkPriceValue.trim() === "" || Number.isNaN(Number(bulkPriceValue))}
+                    onClick={() => {
+                      const num = Number(bulkPriceValue);
+                      runBulkAction(
+                        bulkPriceMode === "percentage"
+                          ? { action: "adjust_prices", percentage: num }
+                          : { action: "adjust_prices", fixedAmount: num }
+                      );
+                    }}
+                    className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-secondary hover:bg-gold-500 hover:text-black border border-border disabled:opacity-40 whitespace-nowrap"
+                  >
+                    Apply Price
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {menu.categories.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl border border-dashed border-border bg-card/40">
-              <Layers className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-              <h4 className="font-serif text-lg font-medium text-foreground">
-                No Categories Created Yet
-              </h4>
-              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-                Begin organizing your menu by adding courses like Appetizers, Main Entrées, Desserts, or Fine Wines.
-              </p>
-              <button
-                onClick={() => {
-                  setEditingCategory(null);
-                  setIsCategoryModalOpen(true);
-                }}
-                className="mt-4 py-2 px-5 rounded-full text-xs font-semibold uppercase tracking-wider bg-primary text-black"
-              >
-                Create First Category
-              </button>
+            <div className="p-8 sm:p-12 text-center rounded-3xl border border-dashed border-border bg-card/40 space-y-6">
+              <div>
+                <Layers className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                <h4 className="font-serif text-xl font-medium text-foreground">
+                  Start Your Menu in One Click
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                  Choose a starter course template below to pre-build your categories, or create a custom category from scratch.
+                </p>
+              </div>
+
+              {/* 1-Click Starter Templates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-3xl mx-auto text-left">
+                {STARTER_TEMPLATES.map((tpl) => {
+                  const isBusy = templateLoading === tpl.id;
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      disabled={!!templateLoading}
+                      onClick={() => handleApplyTemplate(tpl.id)}
+                      className="p-4 rounded-2xl border border-border bg-card hover:border-gold-500/60 hover:bg-secondary/40 transition-all flex flex-col justify-between gap-2 disabled:opacity-50"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-serif text-sm font-medium text-foreground">
+                            {tpl.label}
+                          </span>
+                          <Sparkles className="w-3.5 h-3.5 text-gold-400 shrink-0" />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{tpl.subtitle}</p>
+                      </div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gold-400">
+                        {isBusy ? "Creating courses…" : "Use Template →"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-center gap-3 flex-wrap pt-2">
+                <button
+                  onClick={() => {
+                    setEditingCategory(null);
+                    setIsCategoryModalOpen(true);
+                  }}
+                  className="py-2.5 px-5 rounded-full text-xs font-semibold uppercase tracking-wider bg-primary text-black"
+                >
+                  Create Custom Category
+                </button>
+                <Link
+                  href="/admin/menus/import"
+                  className="py-2.5 px-5 rounded-full text-xs font-semibold uppercase tracking-wider border border-border bg-secondary/50 hover:bg-secondary text-foreground flex items-center gap-1.5"
+                >
+                  <ScanLine className="w-3.5 h-3.5 text-gold-400" /> Import from Photo / PDF / Text
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="space-y-8">
-              {menu.categories.map((category, catIndex) => (
+              {menu.categories.map((category, catIndex) => {
+                const allCatSelected =
+                  category.items.length > 0 &&
+                  category.items.every((i) => selectedItemIds.includes(i.id));
+                const qa = quickAdd[category.id] || { name: "", price: "", description: "", saving: false };
+
+                return (
                 <div
                   key={category.id}
                   className="rounded-3xl bg-card border border-border shadow-subtle overflow-hidden"
@@ -392,6 +852,21 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                   {/* Category Header */}
                   <div className="p-5 bg-secondary/30 border-b border-border/70 flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
+                      {category.items.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectCategory(category)}
+                          className="p-1 text-muted-foreground hover:text-gold-400"
+                          title={allCatSelected ? "Deselect all in category" : "Select all in category"}
+                          aria-label={allCatSelected ? `Deselect all in ${category.name}` : `Select all in ${category.name}`}
+                        >
+                          {allCatSelected ? (
+                            <CheckSquare className="w-4 h-4 text-gold-500" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <button
                           onClick={() => handleMoveCategory(catIndex, "up")}
@@ -412,9 +887,14 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                       </div>
 
                       <div>
-                        <h4 className="font-serif text-lg font-medium text-foreground">
-                          {category.name}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-serif text-lg font-medium text-foreground">
+                            {category.name}
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">
+                            ({category.items.length})
+                          </span>
+                        </div>
                         {category.description && (
                           <p className="text-xs text-muted-foreground font-light">
                             {category.description}
@@ -428,7 +908,7 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                         onClick={() => openAddDish(category.id)}
                         className="py-1.5 px-3 rounded-lg text-xs font-semibold uppercase tracking-wider bg-primary text-black hover:opacity-95 flex items-center gap-1"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Add Dish
+                        <Plus className="w-3.5 h-3.5" /> Full Dish Editor
                       </button>
 
                       <button
@@ -452,22 +932,93 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                     </div>
                   </div>
 
+                  {/* Inline Quick-Add Dish Bar */}
+                  <form
+                    onSubmit={(e) => handleQuickAddDish(category.id, e)}
+                    className="px-4 sm:px-6 py-3 bg-secondary/15 border-b border-border/50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gold-400 shrink-0">
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Quick Add:</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={qa.name}
+                      onChange={(e) =>
+                        setQuickAdd((prev) => ({
+                          ...prev,
+                          [category.id]: { ...qa, name: e.target.value },
+                        }))
+                      }
+                      placeholder="Dish name (e.g. Truffle Fries)"
+                      className="flex-1 min-w-[140px] px-3 py-1.5 rounded-xl bg-background/80 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={qa.price}
+                      onChange={(e) =>
+                        setQuickAdd((prev) => ({
+                          ...prev,
+                          [category.id]: { ...qa, price: e.target.value },
+                        }))
+                      }
+                      placeholder={`Price (${hotel.currencySymbol})`}
+                      className="w-full sm:w-28 px-3 py-1.5 rounded-xl bg-background/80 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+                    />
+                    <input
+                      type="text"
+                      value={qa.description}
+                      onChange={(e) =>
+                        setQuickAdd((prev) => ({
+                          ...prev,
+                          [category.id]: { ...qa, description: e.target.value },
+                        }))
+                      }
+                      placeholder="Short description (optional)"
+                      className="flex-1 min-w-[140px] px-3 py-1.5 rounded-xl bg-background/80 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={qa.saving || !qa.name.trim() || !qa.price.trim()}
+                      className="py-1.5 px-3.5 rounded-xl text-xs font-semibold bg-gold-500/20 text-gold-400 border border-gold-500/40 hover:bg-gold-500 hover:text-black transition-colors disabled:opacity-40 shrink-0"
+                    >
+                      {qa.saving ? "Adding…" : "+ Add"}
+                    </button>
+                  </form>
+
                   {/* Dishes inside category */}
                   <div className="p-4 sm:p-6">
                     {category.items.length === 0 ? (
                       <div className="p-6 text-center text-xs text-muted-foreground border border-dashed border-border rounded-2xl">
-                        No dishes in this category. Click &quot;Add Dish&quot; above to add your first item.
+                        No dishes in this category yet. Type a name and price in the Quick Add bar above and press Enter, or click &quot;Full Dish Editor&quot;.
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {category.items.map((item, itemIdx) => (
+                        {category.items.map((item, itemIdx) => {
+                          const isSelected = selectedItemIds.includes(item.id);
+                          const isEditingPrice = editingPriceItemId === item.id;
+                          return (
                           <div
                             key={item.id}
-                            className={`p-4 rounded-2xl border border-border/80 bg-background/50 hover:border-gold-500/50 transition-all flex flex-col justify-between ${
-                              !item.isAvailable ? "opacity-60" : ""
-                            }`}
+                            className={`p-4 rounded-2xl border bg-background/50 hover:border-gold-500/50 transition-all flex flex-col justify-between ${
+                              isSelected ? "border-gold-500 ring-1 ring-gold-500/30" : "border-border/80"
+                            } ${!item.isAvailable ? "opacity-60" : ""}`}
                           >
                             <div className="flex items-start gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleSelectItem(item.id)}
+                                className="mt-1 text-muted-foreground hover:text-gold-400 shrink-0"
+                                aria-label={`Select ${item.name}`}
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-gold-500" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </button>
                               {item.imageUrl ? (
                                 <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/70">
                                   <Image
@@ -489,13 +1040,55 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                                     {item.name}
                                   </h5>
                                   <div className="text-right shrink-0">
-                                    <span className="text-xs font-semibold text-foreground">
-                                      {formatPrice(
-                                        item.discountPrice ?? item.price,
-                                        hotel.currency,
-                                        hotel.currencySymbol
-                                      )}
-                                    </span>
+                                    {isEditingPrice ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          autoFocus
+                                          value={editingPriceValue}
+                                          onChange={(e) => setEditingPriceValue(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleSaveInlinePrice(item);
+                                            if (e.key === "Escape") setEditingPriceItemId(null);
+                                          }}
+                                          className="w-20 px-2 py-0.5 rounded-lg bg-secondary border border-gold-500 text-xs text-foreground focus:outline-none"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveInlinePrice(item)}
+                                          className="p-1 text-emerald-500 hover:bg-emerald-500/10 rounded"
+                                          title="Save price"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingPriceItemId(null)}
+                                          className="p-1 text-muted-foreground hover:text-foreground rounded"
+                                          title="Cancel"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingPriceItemId(item.id);
+                                          setEditingPriceValue(String(item.price));
+                                        }}
+                                        title="Click to quick-edit price"
+                                        className="text-xs font-semibold text-foreground hover:text-gold-400 px-1.5 py-0.5 rounded hover:bg-secondary/60 transition-colors"
+                                      >
+                                        {formatPrice(
+                                          item.discountPrice ?? item.price,
+                                          hotel.currency,
+                                          hotel.currencySymbol
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
@@ -555,6 +1148,14 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                                   <ArrowDown className="w-3.5 h-3.5" />
                                 </button>
                                 <button
+                                  onClick={() => handleDuplicateDish(item)}
+                                  disabled={duplicatingItemId === item.id}
+                                  className="p-1 text-muted-foreground hover:text-gold-400 disabled:opacity-40"
+                                  title="Duplicate Dish"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                                <button
                                   onClick={() => openEditDish(item)}
                                   className="p-1 text-muted-foreground hover:text-gold-400"
                                   title="Edit Dish"
@@ -571,12 +1172,14 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                        })}
                       </div>
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -646,6 +1249,7 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
         onClose={() => setIsDishModalOpen(false)}
         onSave={handleSaveDish}
         categoryId={targetCategoryId}
+        categories={menu.categories.map((c) => ({ id: c.id, name: c.name }))}
         initialData={editingItem}
         currencySymbol={hotel.currencySymbol}
       />

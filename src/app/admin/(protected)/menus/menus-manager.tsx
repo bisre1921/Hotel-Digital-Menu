@@ -58,7 +58,7 @@ export function MenusManager({
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [headerImageUrl, setHeaderImageUrl] = useState("");
-  const displayLayout = "LIST";
+  const [displayLayout, setDisplayLayout] = useState<"GRID" | "LIST" | "CARDS" | "MAGAZINE">("CARDS");
   const [isPublished, setIsPublished] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -292,7 +292,7 @@ export function MenusManager({
                   <span>&bull;</span>
                   <span>{menu.itemCount} dishes</span>
                   <span>&bull;</span>
-                  <span className="uppercase text-[10px]">Compact cards</span>
+                  <span className="uppercase text-[10px]">{menu.displayLayout || "CARDS"}</span>
                 </div>
 
                 {/* Card Action Buttons */}
@@ -463,7 +463,27 @@ export function MenusManager({
                   </div>
                 </div>
 
-                <p className="rounded-xl border border-border p-4 text-xs text-muted-foreground">Guest style: compact cream photo cards on a dark background, with category pills and clear prices.</p>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Display Layout
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(["CARDS", "GRID", "LIST", "MAGAZINE"] as const).map((layoutOpt) => (
+                      <button
+                        key={layoutOpt}
+                        type="button"
+                        onClick={() => setDisplayLayout(layoutOpt)}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold uppercase tracking-wider border transition-all ${
+                          displayLayout === layoutOpt
+                            ? "bg-primary text-black border-gold-500"
+                            : "bg-secondary/40 text-foreground border-border hover:bg-secondary"
+                        }`}
+                      >
+                        {layoutOpt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="pt-2 flex items-center gap-2">
                   <input

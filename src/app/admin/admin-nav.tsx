@@ -16,6 +16,8 @@ import {
   X,
   Star,
   Hotel,
+  MessageSquare,
+  FileCode2,
 } from "lucide-react";
 import design from "@/components/admin/workspace.module.css";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -50,8 +52,10 @@ export function AdminNav({ user, hotel, firstMenuSlug, children }: AdminNavProps
     { href: "/admin", label: "Overview", icon: LayoutDashboard },
     { href: "/admin/menus", label: "Menus & Dishes", icon: UtensilsCrossed },
     { href: "/admin/menus/import", label: "Import menu", icon: ScanLine },
+    { href: "/admin/reviews", label: "Guest Reviews", icon: MessageSquare },
     { href: "/admin/profile", label: "Business & Branding", icon: Palette },
     { href: "/admin/media", label: "Media Library", icon: ImageIcon },
+    { href: "/docs", label: "Swagger API Docs", icon: FileCode2 },
   ];
 
   const handleLogout = async () => {
@@ -75,7 +79,7 @@ export function AdminNav({ user, hotel, firstMenuSlug, children }: AdminNavProps
       {publicMenuUrl && <a className={design.sidebarPreview} href={publicMenuUrl} target="_blank" rel="noreferrer">View guest menu <ExternalLink size={15} /></a>}
       <div className={design.sidebarBottom}><div className={design.userIdentity}><span className={design.avatar}>{user.name.charAt(0)}</span><div><strong>{user.name}</strong><small>{user.role.toLowerCase()}</small></div></div><button className={design.logout} disabled={loggingOut} onClick={handleLogout}><LogOut size={15} />{loggingOut ? "Signing out…" : "Sign out"}</button></div>
     </aside>
-    <div className={design.workspaceBody}><header className={design.workspaceTop}><div><button className={design.mobileToggle} aria-label="Toggle navigation menu" aria-expanded={mobileMenuOpen} aria-controls="workspace-navigation" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X size={20} /> : <MenuIcon size={20} />}</button><span>Workspace /</span><strong>{pathname === "/admin" ? "Overview" : pathname.includes("import") ? "Menu import" : pathname.includes("menus") ? "Menus" : pathname.includes("media") ? "Media library" : "Business settings"}</strong></div><div><span>{hotel.name}</span><ThemeToggle /></div></header><main className={design.workspaceMain}>{children}</main></div>
+    <div className={design.workspaceBody}><header className={design.workspaceTop}><div><button className={design.mobileToggle} aria-label="Toggle navigation menu" aria-expanded={mobileMenuOpen} aria-controls="workspace-navigation" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X size={20} /> : <MenuIcon size={20} />}</button><span>Workspace /</span><strong>{pathname === "/admin" ? "Overview" : pathname.includes("import") ? "Menu import" : pathname.includes("menus") ? "Menus" : pathname.includes("reviews") ? "Guest reviews" : pathname.includes("media") ? "Media library" : "Business settings"}</strong></div><div><span>{hotel.name}</span><ThemeToggle /></div></header><main className={design.workspaceMain}>{children}</main></div>
     {mobileMenuOpen && <button aria-label="Close navigation" className={design.mobileBackdrop} onClick={() => setMobileMenuOpen(false)} />}
   </div>;
 }

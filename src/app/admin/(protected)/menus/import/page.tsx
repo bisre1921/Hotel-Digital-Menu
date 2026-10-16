@@ -10,5 +10,9 @@ export default async function ImportPage() {
   if (!session) redirect("/admin/login");
   const business = await db.hotel.findUnique({ where: { id: session.hotelId }, select: { id: true, currency: true } });
   if (!business) redirect("/admin/login");
-  return <MenuImportStudio businessId={business.id} currency={business.currency} visionEnabled={Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_MENU_MODEL)} />;
+  const visionEnabled = Boolean(
+    process.env.GOOGLE_CLOUD_PROJECT ||
+      (process.env.OPENAI_API_KEY && process.env.OPENAI_MENU_MODEL)
+  );
+  return <MenuImportStudio businessId={business.id} currency={business.currency} visionEnabled={visionEnabled} />;
 }

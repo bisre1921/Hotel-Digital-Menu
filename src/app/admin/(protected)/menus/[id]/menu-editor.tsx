@@ -32,6 +32,7 @@ import {
   X,
   Zap,
   ScanLine,
+  Wand2,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { CategoryModal } from "./category-modal";
@@ -39,6 +40,10 @@ import { DishModal, DishFormData } from "./dish-modal";
 import { QRStudio } from "./qr-studio";
 import { MenuSettings } from "./menu-settings";
 import { DIETARY_OPTIONS } from "@/config/theme";
+import {
+  BatchMediaModal,
+  type RemoteMediaAssignment,
+} from "@/components/menu/batch-media-modal";
 
 const STARTER_TEMPLATES = [
   {
@@ -147,6 +152,7 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
   const router = useRouter();
   const [menu, setMenu] = useState<MenuFull>(initialMenu);
   const [activeTab, setActiveTab] = useState<"dishes" | "qr" | "settings" | "preview">("dishes");
+  const [isBatchMediaOpen, setIsBatchMediaOpen] = useState(false);
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -639,15 +645,25 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setEditingCategory(null);
-                setIsCategoryModalOpen(true);
-              }}
-              className="py-2.5 px-4 rounded-xl text-xs font-semibold uppercase tracking-wider bg-primary text-black hover:opacity-95 shadow-md shadow-gold-500/10 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Add Course / Category
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsBatchMediaOpen(true)}
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold uppercase tracking-wider border border-gold-500/40 bg-gold-500/10 hover:bg-gold-500/20 text-gold-400 flex items-center gap-2 transition-colors"
+              >
+                <Wand2 className="w-4 h-4" /> Batch Match Photos &amp; Videos
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingCategory(null);
+                  setIsCategoryModalOpen(true);
+                }}
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold uppercase tracking-wider bg-primary text-black hover:opacity-95 shadow-md shadow-gold-500/10 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Add Course / Category
+              </button>
+            </div>
           </div>
 
           {bulkMessage && (
@@ -1252,6 +1268,62 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
         categories={menu.categories.map((c) => ({ id: c.id, name: c.name }))}
         initialData={editingItem}
         currencySymbol={hotel.currencySymbol}
+      />
+
+      {/* Smart Batch Photo & Video Matcher Modal */}
+      <BatchMediaModal
+        isOpen={isBatchMediaOpen}
+        onClose={() => setIsBatchMediaOpen(false)}
+        dishes={menu.categories.flatMap((c) =>
+          c.items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            categoryName: c.name,
+          }))
+        )}
+        onApplyRemote={async (assignments: RemoteMediaAssignment[]) => {
+          const itemIds = assignments.map((a) => a.itemId);
+          const res = await fetch("/api/items/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "batch_assign_media",
+              itemIds,
+              assignments,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to save matched media");
+          }
+
+          // Optimistically update local menu state
+          const byItem = new Map(assignments.map((a) => [a.itemId, a]));
+          setMenu((prev) => ({
+            ...prev,
+            categories: prev.categories.map((cat) => ({
+              ...cat,
+              items: cat.items.map((it) => {
+                const match = byItem.get(it.id);
+                if (!match) return it;
+                return {
+                  ...it,
+                  imageUrl:
+                    match.imageUrl !== undefined ? match.imageUrl : it.imageUrl,
+                  videoUrl:
+                    match.videoUrl !== undefined ? match.videoUrl : it.videoUrl,
+                };
+              }),
+            })),
+          }));
+
+          setBulkMessage(
+            data.message ||
+              `Assigned matched photos/videos to ${assignments.length} dishes`
+          );
+          router.refresh();
+          setTimeout(() => setBulkMessage(null), 5000);
+        }}
       />
     </div>
   );

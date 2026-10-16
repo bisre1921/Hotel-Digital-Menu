@@ -15,3 +15,25 @@ export function matchesMediaType(bytes: Uint8Array, type: string): boolean {
     default: return false;
   }
 }
+
+const DETECTABLE_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+] as const;
+
+/** Detect valid image/video MIME type from file magic bytes (e.g. when uploaded with .img or missing browser MIME). */
+export function detectMediaMimeType(bytes: Uint8Array): string | null {
+  for (const candidate of DETECTABLE_MEDIA_TYPES) {
+    if (matchesMediaType(bytes, candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+

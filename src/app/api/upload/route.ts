@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { matchesMediaType } from "@/lib/media-validation";
+import { matchesMediaType, detectMediaMimeType } from "@/lib/media-validation";
 import { requireAuth } from "@/lib/auth";
 import { saveUploadedFile, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES } from "@/lib/storage";
 
@@ -15,13 +15,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const mimeType = file.type;
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    let mimeType = file.type;
+    if (
+      !ALLOWED_IMAGE_TYPES.includes(mimeType) &&
+      !ALLOWED_VIDEO_TYPES.includes(mimeType)
+    ) {
+      const detected = detectMediaMimeType(buffer);
+      if (detected) {
+        mimeType = detected;
+      }
+    }
+
     const isImage = ALLOWED_IMAGE_TYPES.includes(mimeType);
     const isVideo = ALLOWED_VIDEO_TYPES.includes(mimeType);
 
     if (!isImage && !isVideo) {
       return NextResponse.json(
-        { error: `Unsupported media format: ${mimeType}` },
+        { error: `Unsupported media format: ${mimeType || file.name}` },
         { status: 400 }
       );
     }
@@ -34,9 +47,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
 
     if (!matchesMediaType(buffer, mimeType)) {
       return NextResponse.json({ error: "The file content does not match its media type." }, { status: 400 });

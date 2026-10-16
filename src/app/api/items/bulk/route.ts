@@ -156,6 +156,31 @@ export async function POST(req: Request) {
       });
     }
 
+    if (action === "batch_assign_media") {
+      const { assignments } = validated.data;
+      const verifiedSet = new Set(verifiedIds);
+      const validAssignments = assignments.filter((a) => verifiedSet.has(a.itemId));
+
+      await db.$transaction(
+        validAssignments.map((a) => {
+          const data: { imageUrl?: string | null; videoUrl?: string | null } = {};
+          if (a.imageUrl !== undefined) data.imageUrl = a.imageUrl;
+          if (a.videoUrl !== undefined) data.videoUrl = a.videoUrl;
+          return db.menuItem.update({
+            where: { id: a.itemId },
+            data,
+          });
+        })
+      );
+
+      return NextResponse.json({
+        success: true,
+        action,
+        count: validAssignments.length,
+        message: `Assigned matched photos/videos to ${validAssignments.length} dishes`,
+      });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error: any) {
     if (error.message === "Unauthorized") {

@@ -7,16 +7,19 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Building2,
   Check,
   CheckCheck,
   Eye,
   EyeOff,
   FileText,
+  ImagePlus,
   Plus,
   ScanLine,
   Search,
   Sparkles,
   Upload,
+  Wand2,
   X,
   ZoomIn,
   ZoomOut,
@@ -24,11 +27,20 @@ import {
 import {
   extractedMenuSchema,
   importCommitSchema,
+  type BoundingBox,
+  type ExtractedBrand,
   type ImportRow,
 } from "@/lib/menu-import";
-import { ImportReviewItem } from "@/components/menu-import/import-review-item";
+import {
+  ImportReviewItem,
+  type ReviewRow,
+} from "@/components/menu-import/import-review-item";
+import {
+  BatchMediaModal,
+  type LocalMediaAttachment,
+} from "@/components/menu/batch-media-modal";
 
-type Row = ImportRow & { id: string; checked: boolean };
+type Row = ReviewRow;
 
 const field =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -45,14 +57,35 @@ function isRowValid(row: Pick<ImportRow, "name" | "category" | "price">): boolea
   );
 }
 
-function suggestMenuTitle(files: File[], items: ImportRow[]): string {
+function suggestMenuTitle(
+  files: File[],
+  items: ImportRow[],
+  brand?: ExtractedBrand
+): string {
+  if (brand?.menuTitle?.trim() && brand.menuTitle.trim().length >= 2) {
+    if (brand.businessName?.trim()) {
+      const bName = brand.businessName.trim();
+      const mTitle = brand.menuTitle.trim();
+      if (mTitle.toLowerCase().includes(bName.toLowerCase())) {
+        return mTitle.slice(0, 80);
+      }
+      return `${bName} — ${mTitle}`.slice(0, 80);
+    }
+    return brand.menuTitle.trim().slice(0, 80);
+  }
+  if (brand?.businessName?.trim() && brand.businessName.trim().length >= 2) {
+    return `${brand.businessName.trim()} Menu`.slice(0, 80);
+  }
   if (files.length > 0) {
     const cleaned = files[0].name
       .replace(/\.[^.]+$/, "")
       .replace(/[-_]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    if (cleaned.length >= 2 && !/^(img|dsc|photo|image|scan|screenshot)/i.test(cleaned)) {
+    if (
+      cleaned.length >= 2 &&
+      !/^(img|dsc|photo|image|scan|screenshot)/i.test(cleaned)
+    ) {
       return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).slice(0, 80);
     }
   }
@@ -61,6 +94,87 @@ function suggestMenuTitle(files: File[], items: ImportRow[]): string {
     return `${firstCat} Menu`.slice(0, 80);
   }
   return "Imported Menu";
+}
+
+async function loadHtmlImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = src;
+  });
+}
+
+async function cropBoxFromImageSources(
+  imageCache: Map<number, HTMLImageElement>,
+  box: BoundingBox | null | undefined
+): Promise<{ blob: Blob; previewUrl: string } | null> {
+  if (!box) return null;
+  const img = imageCache.get(box.page) || imageCache.get(0);
+  if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+
+  const x1 = Math.max(0, Math.floor((box.xmin / 1000) * img.naturalWidth));
+  const y1 = Math.max(0, Math.floor((box.ymin / 1000) * img.naturalHeight));
+  const x2 = Math.min(img.naturalWidth, Math.ceil((box.xmax / 1000) * img.naturalWidth));
+  const y2 = Math.min(img.naturalHeight, Math.ceil((box.ymax / 1000) * img.naturalHeight));
+
+  const cropW = x2 - x1;
+  const cropH = y2 - y1;
+  if (cropW < 24 || cropH < 24) return null;
+
+  const maxDim = 720;
+  const scale = Math.min(1, maxDim / Math.max(cropW, cropH));
+  const targetW = Math.max(24, Math.round(cropW * scale));
+  const targetH = Math.max(24, Math.round(cropH * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(img, x1, y1, cropW, cropH, 0, 0, targetW, targetH);
+
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.88)
+  );
+  if (!blob) return null;
+  return {
+    blob,
+    previewUrl: URL.createObjectURL(blob),
+  };
+}
+
+async function uploadCroppedBlob(blob: Blob, namePrefix: string): Promise<string | null> {
+  const file =
+    blob instanceof File
+      ? blob
+      : (() => {
+          const ext =
+            blob.type === "image/png"
+              ? "png"
+              : blob.type === "image/webp"
+                ? "webp"
+                : blob.type === "video/mp4"
+                  ? "mp4"
+                  : blob.type === "video/webm"
+                    ? "webm"
+                    : "jpg";
+          const safePrefix =
+            namePrefix.replace(/[^a-z0-9-_]+/gi, "-").slice(0, 40) || "crop";
+          return new File([blob], `${safePrefix}.${ext}`, {
+            type: blob.type || "image/jpeg",
+          });
+        })();
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return typeof data?.url === "string" ? data.url : null;
 }
 
 export function MenuImportStudio({
@@ -92,11 +206,22 @@ export function MenuImportStudio({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [ready, setReady] = useState(false);
+  const [isBatchMediaOpen, setIsBatchMediaOpen] = useState(false);
+
+  // Extracted Hotel / Cafe Brand & Logo state
+  const [businessName, setBusinessName] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [logoBlob, setLogoBlob] = useState<Blob | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [applyBrandToHotel, setApplyBrandToHotel] = useState(false);
 
   // Filtering & search for compact listing
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "MISSING_PRICE" | "UNCHECKED">("ALL");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | "MISSING_PRICE" | "UNCHECKED" | "WITH_PHOTOS"
+  >("ALL");
 
   const storageKey = `menu-import-v1:${businessId}`;
   const savingRef = useRef(false);
@@ -119,7 +244,12 @@ export function MenuImportStudio({
             checked: isRowValid(row),
           }));
           setRows(restoredRows);
-          setTitle(data.title.trim() || suggestMenuTitle([], parsed.data.items));
+          setTitle(
+            data.title.trim() || suggestMenuTitle([], parsed.data.items)
+          );
+          if (typeof data.businessName === "string")
+            setBusinessName(data.businessName);
+          if (typeof data.tagline === "string") setTagline(data.tagline);
           setImportId(data.importId);
           setNotice(
             "Your draft review was restored. Verify any highlighted items and save when ready."
@@ -135,16 +265,33 @@ export function MenuImportStudio({
   useEffect(() => {
     if (!ready) return;
     try {
-      if (rows.length)
+      if (rows.length) {
+        const serializableRows = rows.map(
+          ({
+            cropBlob: _b,
+            cropPreviewUrl: _p,
+            videoBlob: _vb,
+            videoPreviewUrl: _vp,
+            ...rest
+          }) => rest
+        );
         sessionStorage.setItem(
           storageKey,
-          JSON.stringify({ rows, title, importId })
+          JSON.stringify({
+            rows: serializableRows,
+            title,
+            importId,
+            businessName,
+            tagline,
+          })
         );
-      else sessionStorage.removeItem(storageKey);
+      } else {
+        sessionStorage.removeItem(storageKey);
+      }
     } catch {
       /* Do not block review if browser storage is unavailable. */
     }
-  }, [rows, title, importId, storageKey, ready]);
+  }, [rows, title, importId, businessName, tagline, storageKey, ready]);
 
   useEffect(() => {
     const next = files.map((file) => ({
@@ -191,25 +338,108 @@ export function MenuImportStudio({
       if (!response.ok)
         throw new Error(data.error || "Could not read the menu.");
       const parsed = extractedMenuSchema.parse(data);
-      const nextRows = parsed.items.map((row) => ({
-        ...row,
-        id: crypto.randomUUID(),
-        checked: isRowValid(row),
-      }));
-      setRows(nextRows);
-      if (!title.trim()) {
-        setTitle(suggestMenuTitle(files, parsed.items));
+
+      // Build image cache from uploaded image files for fast client-side cropping
+      const imageCache = new Map<number, HTMLImageElement>();
+      if (mode === "file" && files.length > 0) {
+        await Promise.all(
+          files.map(async (file, idx) => {
+            if (!file.type.startsWith("image/")) return;
+            const tempUrl = URL.createObjectURL(file);
+            try {
+              const img = await loadHtmlImage(tempUrl);
+              imageCache.set(idx, img);
+            } catch {
+              /* ignore unreadable image */
+            } finally {
+              URL.revokeObjectURL(tempUrl);
+            }
+          })
+        );
       }
+
+      // 1. Extract & crop brand logo + business name
+      const extractedBrand = parsed.brand;
+      const detectedBizName = extractedBrand?.businessName?.trim() || "";
+      const detectedTagline = extractedBrand?.tagline?.trim() || "";
+      setBusinessName(detectedBizName);
+      setTagline(detectedTagline);
+      setLogoUrl(null);
+
+      let croppedLogoCount = 0;
+      if (extractedBrand?.logoBox && imageCache.size > 0) {
+        const logoCrop = await cropBoxFromImageSources(
+          imageCache,
+          extractedBrand.logoBox
+        );
+        if (logoCrop) {
+          setLogoPreviewUrl(logoCrop.previewUrl);
+          setLogoBlob(logoCrop.blob);
+          croppedLogoCount = 1;
+        } else {
+          setLogoPreviewUrl(null);
+          setLogoBlob(null);
+        }
+      } else {
+        setLogoPreviewUrl(null);
+        setLogoBlob(null);
+      }
+
+      if (detectedBizName || croppedLogoCount > 0) {
+        setApplyBrandToHotel(true);
+      } else {
+        setApplyBrandToHotel(false);
+      }
+
+      // 2. Extract & crop dish photos for items with imageBox
+      let croppedDishCount = 0;
+      const nextRows: Row[] = await Promise.all(
+        parsed.items.map(async (row) => {
+          let cropPreviewUrl: string | null = null;
+          let cropBlob: Blob | null = null;
+          if (row.imageBox && imageCache.size > 0) {
+            const dishCrop = await cropBoxFromImageSources(
+              imageCache,
+              row.imageBox
+            );
+            if (dishCrop) {
+              cropPreviewUrl = dishCrop.previewUrl;
+              cropBlob = dishCrop.blob;
+              croppedDishCount++;
+            }
+          }
+          return {
+            ...row,
+            id: crypto.randomUUID(),
+            checked: isRowValid(row),
+            cropPreviewUrl,
+            cropBlob,
+          };
+        })
+      );
+
+      setRows(nextRows);
+      setTitle(suggestMenuTitle(files, parsed.items, extractedBrand));
       setImportId(crypto.randomUUID());
       setConfirmed(false);
       setActiveCategory("ALL");
       setStatusFilter("ALL");
       setSearchQuery("");
+
       const missingPrices = nextRows.filter((r) => r.price === null).length;
+      const extras: string[] = [];
+      if (detectedBizName) extras.push(`brand "${detectedBizName}"`);
+      if (croppedLogoCount > 0) extras.push("1 logo");
+      if (croppedDishCount > 0)
+        extras.push(
+          `${croppedDishCount} dish ${croppedDishCount === 1 ? "photo" : "photos"}`
+        );
+      const extraSummary = extras.length ? ` (plus ${extras.join(", ")})` : "";
+
       setNotice(
         missingPrices > 0
-          ? `Extracted ${nextRows.length} items (${missingPrices} need a price). Fill in missing prices and save your draft.`
-          : `Extracted ${nextRows.length} items and auto-checked all valid rows. Confirm below to save your draft.`
+          ? `Extracted ${nextRows.length} items${extraSummary}. ${missingPrices} need a price before saving.`
+          : `Extracted ${nextRows.length} items${extraSummary} and auto-checked all valid rows.`
       );
     } catch (cause) {
       setError(
@@ -231,7 +461,9 @@ export function MenuImportStudio({
     if (rows.some((row) => !isRowValid(row))) {
       setStatusFilter("MISSING_PRICE");
       setActiveCategory("ALL");
-      setError("Please enter a valid name, category, and price for all items before saving.");
+      setError(
+        "Please enter a valid name, category, and price for all items before saving."
+      );
       return;
     }
     if (rows.some((row) => !row.checked)) {
@@ -240,19 +472,70 @@ export function MenuImportStudio({
       setError("Check all items (or click 'Check all valid') before saving.");
       return;
     }
-    const result = importCommitSchema.safeParse({
-      importId,
-      title: title.trim(),
-      reviewed: confirmed,
-      items: rows,
-    });
-    if (!result.success) {
-      setError("Enter a menu name, correct all prices, and confirm your review.");
-      return;
-    }
+
     savingRef.current = true;
     setBusy("save");
     try {
+      // Upload cropped logo (if applying brand) and any cropped dish photos in parallel
+      let finalLogoUrl = logoUrl;
+      if (applyBrandToHotel && logoBlob && !finalLogoUrl) {
+        finalLogoUrl = await uploadCroppedBlob(
+          logoBlob,
+          businessName || "hotel-logo"
+        );
+        if (finalLogoUrl) setLogoUrl(finalLogoUrl);
+      }
+
+      const itemsWithUploadedUrls = await Promise.all(
+        rows.map(async (row) => {
+          let finalImageUrl = row.imageUrl || null;
+          if (!finalImageUrl && row.cropBlob) {
+            finalImageUrl = await uploadCroppedBlob(
+              row.cropBlob,
+              row.name || "dish"
+            );
+          }
+          let finalVideoUrl = row.videoUrl || null;
+          if (!finalVideoUrl && row.videoBlob) {
+            finalVideoUrl = await uploadCroppedBlob(
+              row.videoBlob,
+              row.name || "dish-video"
+            );
+          }
+          return {
+            category: row.category,
+            name: row.name,
+            description: row.description,
+            price: row.price,
+            note: row.note,
+            imageUrl: finalImageUrl,
+            videoUrl: finalVideoUrl,
+          };
+        })
+      );
+
+      const result = importCommitSchema.safeParse({
+        importId,
+        title: title.trim(),
+        reviewed: confirmed,
+        items: itemsWithUploadedUrls,
+        brandUpdate: applyBrandToHotel
+          ? {
+              applyToHotel: true,
+              businessName: businessName.trim() || undefined,
+              tagline: tagline.trim() || undefined,
+              logoUrl: finalLogoUrl || undefined,
+            }
+          : undefined,
+      });
+
+      if (!result.success) {
+        setError(
+          "Enter a menu name, correct all prices, and confirm your review."
+        );
+        return;
+      }
+
       const response = await fetch("/api/menu-import/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -281,6 +564,14 @@ export function MenuImportStudio({
   const checkedCount = rows.filter((row) => row.checked).length;
   const missingCount = rows.filter((row) => !isRowValid(row)).length;
   const uncheckedCount = rows.length - checkedCount;
+  const photosCount = rows.filter((row) =>
+    Boolean(
+      row.cropPreviewUrl ||
+        row.imageUrl ||
+        row.videoPreviewUrl ||
+        row.videoUrl
+    )
+  ).length;
   const allRowsValid = rows.length > 0 && missingCount === 0;
   const canSave =
     !busy &&
@@ -305,6 +596,14 @@ export function MenuImportStudio({
       .filter(({ row }) => {
         if (statusFilter === "MISSING_PRICE" && isRowValid(row)) return false;
         if (statusFilter === "UNCHECKED" && row.checked) return false;
+        if (
+          statusFilter === "WITH_PHOTOS" &&
+          !row.cropPreviewUrl &&
+          !row.imageUrl &&
+          !row.videoPreviewUrl &&
+          !row.videoUrl
+        )
+          return false;
         if (
           activeCategory !== "ALL" &&
           (row.category.trim() || "Uncategorized") !== activeCategory
@@ -471,7 +770,7 @@ export function MenuImportStudio({
                     />
                   </label>
 
-                  {/* Compact file thumbnail strip instead of giant full-height images */}
+                  {/* Compact file thumbnail strip */}
                   {previews.length > 0 && (
                     <div className="mt-4 space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -541,8 +840,8 @@ export function MenuImportStudio({
 
                   <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
                     By choosing Read my menu, you send these files to our AI
-                    extraction provider. Upload menus you have permission to
-                    use. Originals are not saved to the media library.
+                    extraction provider. Gemini AI will extract your hotel/café
+                    name, logo, dish photos, categories, and prices.
                   </p>
                   {!visionEnabled && (
                     <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
@@ -609,7 +908,7 @@ export function MenuImportStudio({
                 className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-40"
               >
                 <ScanLine size={18} />
-                {busy === "extract" ? "Reading your menu…" : "Read my menu"}
+                {busy === "extract" ? "Reading your menu & photos…" : "Read my menu"}
               </button>
             </div>
           </section>
@@ -626,15 +925,16 @@ export function MenuImportStudio({
                 You make the final call.
               </h2>
               <p className="mt-4 text-sm leading-6">
-                Names, categories and prices become compact editable rows.
-                Missing prices are highlighted automatically, and your menu goes
-                live only when you publish it.
+                Names, categories, prices, your hotel/café logo, and printed
+                dish photos are automatically extracted and cropped for your
+                review.
               </p>
             </div>
             <ul className="mt-8 space-y-3 border-t border-[#232b25]/20 pt-5 text-sm">
               {[
+                "Automatically detects hotel/café name & crops logo",
+                "Crops printed dish photos directly from menu pages",
                 "Amharic and English text kept as printed",
-                "Valid items auto-checked to save you time",
                 "Saved as a draft, never published automatically",
               ].map((label) => (
                 <li key={label} className="flex items-start gap-3">
@@ -706,9 +1006,9 @@ export function MenuImportStudio({
                 </div>
               )}
 
-              {/* Bounded Preview Container (never stretches page height) */}
+              {/* Bounded Preview Container */}
               {currentPreview ? (
-                <div className="overflow-auto rounded-xl border border-border bg-black/20 max-h-[52vh]">
+                <div className="max-h-[52vh] overflow-auto rounded-xl border border-border bg-black/20">
                   {currentPreview.pdf ? (
                     <object
                       data={currentPreview.url}
@@ -728,21 +1028,20 @@ export function MenuImportStudio({
                       </p>
                     </object>
                   ) : (
-                    /* Constrained height by default, scrollable when zoomed */
                     <img
                       src={currentPreview.url}
                       alt={`Original menu page ${activePreviewIdx + 1}`}
                       className={
                         zoomed
                           ? "w-[160%] max-w-none cursor-zoom-out"
-                          : "mx-auto max-h-[48vh] w-auto object-contain cursor-zoom-in"
+                          : "mx-auto max-h-[48vh] w-auto cursor-zoom-in object-contain"
                       }
                       onClick={() => setZoomed((z) => !z)}
                     />
                   )}
                 </div>
               ) : text ? (
-                <pre className="max-h-[48vh] overflow-auto rounded-xl border border-border bg-background/60 p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
+                <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-background/60 p-3 font-mono text-xs leading-relaxed">
                   {text}
                 </pre>
               ) : (
@@ -768,23 +1067,111 @@ export function MenuImportStudio({
             </section>
           )}
 
-          {/* RIGHT COLUMN: Menu Title, Compact Filter Toolbar, Bounded Item List, & Save Bar */}
+          {/* RIGHT COLUMN: Brand Card, Menu Name, Compact Filter Toolbar, Bounded Item List, & Save Bar */}
           <section
             className="min-w-0 space-y-4"
             aria-label="Review extracted items"
           >
-            {/* Top Bar: Menu Name + Summary + Bulk Check */}
+            {/* Extracted Brand & Logo Bar (Hotel / Cafe Name + Logo) */}
             <div className="rounded-2xl border border-border bg-card p-4">
-              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+                  <Building2 size={14} />
+                  <span>Hotel / Café Branding & Menu Title</span>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={applyBrandToHotel}
+                    onChange={(e) => setApplyBrandToHotel(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded accent-primary"
+                  />
+                  <span>Save brand name & logo to hotel profile</span>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr] sm:items-end">
+                {/* Logo thumbnail / upload */}
+                <div className="flex items-center gap-2.5">
+                  {logoPreviewUrl ? (
+                    <div className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-primary/50 bg-background p-1">
+                      <img
+                        src={logoPreviewUrl}
+                        alt="Extracted logo"
+                        className="h-full w-full object-contain"
+                      />
+                      <button
+                        type="button"
+                        title="Remove logo"
+                        onClick={() => {
+                          setLogoPreviewUrl(null);
+                          setLogoBlob(null);
+                          setLogoUrl(null);
+                        }}
+                        className="absolute inset-0 flex items-center justify-center bg-black/65 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      title="Upload hotel or café logo"
+                      className="flex h-14 w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-border bg-background/50 text-[10px] text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    >
+                      <ImagePlus size={15} />
+                      <span>Logo</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        disabled={!!busy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          setLogoPreviewUrl(URL.createObjectURL(f));
+                          setLogoBlob(f);
+                          setLogoUrl(null);
+                          setApplyBrandToHotel(true);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Hotel / Cafe Name */}
+                <div>
+                  <label
+                    htmlFor="import-business-name"
+                    className="mb-1 block text-xs text-muted-foreground"
+                  >
+                    Hotel / Café Name (from menu)
+                  </label>
+                  <input
+                    id="import-business-name"
+                    value={businessName}
+                    maxLength={160}
+                    onChange={(e) => {
+                      setBusinessName(e.target.value);
+                      if (e.target.value.trim()) setApplyBrandToHotel(true);
+                    }}
+                    placeholder="e.g. Grand Azure Café"
+                    className={field}
+                  />
+                </div>
+
+                {/* Menu Name (Required) */}
                 <div>
                   <label
                     htmlFor="import-title"
-                    className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    className="mb-1 flex items-center justify-between text-xs text-muted-foreground"
                   >
-                    <span>Menu Name (Required)</span>
+                    <span className="font-medium text-foreground">
+                      Menu Name (Required)
+                    </span>
                     {title.trim().length < 2 && (
-                      <span className="text-amber-500 font-normal normal-case">
-                        * Enter at least 2 characters
+                      <span className="text-[11px] text-amber-500">
+                        * Required
                       </span>
                     )}
                   </label>
@@ -802,67 +1189,9 @@ export function MenuImportStudio({
                     }`}
                   />
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {checkedCount < rows.length ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRows((current) =>
-                          current.map((row) =>
-                            isRowValid(row) ? { ...row, checked: true } : row
-                          )
-                        );
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/20"
-                    >
-                      <CheckCheck size={14} /> Check all valid ({rows.length - missingCount})
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRows((current) =>
-                          current.map((row) => ({ ...row, checked: false }))
-                        );
-                        setConfirmed(false);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      Uncheck all
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={rows.length >= 200 || !!busy}
-                    onClick={() => {
-                      const defaultCat =
-                        activeCategory !== "ALL"
-                          ? activeCategory
-                          : rows.at(-1)?.category || "Menu";
-                      setRows((current) => [
-                        {
-                          id: crypto.randomUUID(),
-                          category: defaultCat,
-                          name: "",
-                          price: null,
-                          description: "",
-                          note: "Enter item name and price",
-                          checked: false,
-                        },
-                        ...current,
-                      ]);
-                      setConfirmed(false);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium hover:border-primary/40"
-                  >
-                    <Plus size={14} /> Add item
-                  </button>
-                </div>
               </div>
 
-              {/* Filter & Search Bar */}
+              {/* Bulk Actions & Filter Bar */}
               <div className="mt-3 flex flex-col gap-2.5 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
@@ -876,6 +1205,19 @@ export function MenuImportStudio({
                   >
                     All ({rows.length})
                   </button>
+                  {photosCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter("WITH_PHOTOS")}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                        statusFilter === "WITH_PHOTOS"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-primary/10 text-primary hover:bg-primary/20"
+                      }`}
+                    >
+                      With Photos ({photosCount})
+                    </button>
+                  )}
                   {missingCount > 0 && (
                     <button
                       type="button"
@@ -904,22 +1246,89 @@ export function MenuImportStudio({
                   )}
                 </div>
 
-                <div className="relative w-full sm:w-56">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search dish or category…"
-                    className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative w-full sm:w-48">
+                    <Search
+                      size={13}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search dish…"
+                      className="w-full rounded-lg border border-border bg-background py-1 pl-8 pr-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  {checkedCount < rows.length ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRows((current) =>
+                          current.map((row) =>
+                            isRowValid(row) ? { ...row, checked: true } : row
+                          )
+                        );
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                    >
+                      <CheckCheck size={13} /> Check valid ({rows.length - missingCount})
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRows((current) =>
+                          current.map((row) => ({ ...row, checked: false }))
+                        );
+                        setConfirmed(false);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      Uncheck all
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={!!busy || rows.length === 0}
+                    onClick={() => setIsBatchMediaOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-primary/50 bg-primary/15 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/25 disabled:opacity-50"
+                  >
+                    <Wand2 size={13} /> Batch Match Photos &amp; Videos
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={rows.length >= 200 || !!busy}
+                    onClick={() => {
+                      const defaultCat =
+                        activeCategory !== "ALL"
+                          ? activeCategory
+                          : rows.at(-1)?.category || "Menu";
+                      setRows((current) => [
+                        {
+                          id: crypto.randomUUID(),
+                          category: defaultCat,
+                          name: "",
+                          price: null,
+                          description: "",
+                          note: "Enter item name and price",
+                          checked: false,
+                        },
+                        ...current,
+                      ]);
+                      setConfirmed(false);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium hover:border-primary/40"
+                  >
+                    <Plus size={13} /> Add item
+                  </button>
                 </div>
               </div>
 
-              {/* Category quick-jump pills when multiple categories exist */}
+              {/* Category quick-jump pills */}
               {categories.length > 1 && (
                 <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-1">
                   <button
@@ -958,8 +1367,8 @@ export function MenuImportStudio({
               />
             </div>
 
-            {/* Bounded Scrollable Items Container — prevents 10,000px long pages */}
-            <div className="max-h-[54vh] space-y-2 overflow-y-auto rounded-2xl border border-border bg-card/40 p-2.5 sm:p-3">
+            {/* Bounded Scrollable Items Container */}
+            <div className="max-h-[52vh] space-y-2 overflow-y-auto rounded-2xl border border-border bg-card/40 p-2.5 sm:p-3">
               {filteredRows.length === 0 ? (
                 <div className="py-8 text-center text-xs text-muted-foreground">
                   No items match the current filter.{" "}
@@ -1002,9 +1411,8 @@ export function MenuImportStudio({
               )}
             </div>
 
-            {/* Bottom Save Card — Always clear why Save is enabled or what's left */}
+            {/* Bottom Save Card */}
             <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5">
-              {/* Actionable blocker hints if anything is missing */}
               {(title.trim().length < 2 || missingCount > 0) && (
                 <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
                   <AlertCircle size={14} className="shrink-0" />
@@ -1049,7 +1457,6 @@ export function MenuImportStudio({
                   onChange={(e) => {
                     const nextChecked = e.target.checked;
                     if (nextChecked) {
-                      // Automatically mark all valid rows as checked when confirming review
                       setRows((current) =>
                         current.map((row) =>
                           isRowValid(row) ? { ...row, checked: true } : row
@@ -1063,7 +1470,13 @@ export function MenuImportStudio({
                 <span>
                   I have reviewed every item, price and category. All prices use{" "}
                   <strong>{currency}</strong>. Save these as a new unpublished
-                  menu.
+                  menu
+                  {photosCount > 0
+                    ? ` (including ${photosCount} dish ${
+                        photosCount === 1 ? "photo/video" : "photos/videos"
+                      })`
+                    : ""}
+                  .
                 </span>
               </label>
 
@@ -1073,7 +1486,9 @@ export function MenuImportStudio({
                 disabled={!canSave}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground transition-opacity disabled:opacity-40"
               >
-                {busy === "save" ? "Saving your draft…" : "Save reviewed draft"}
+                {busy === "save"
+                  ? "Uploading media & saving draft…"
+                  : "Save reviewed draft"}
                 <ArrowRight size={17} />
               </button>
               <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -1085,6 +1500,50 @@ export function MenuImportStudio({
           </section>
         </div>
       )}
+
+      <BatchMediaModal
+        isOpen={isBatchMediaOpen}
+        onClose={() => setIsBatchMediaOpen(false)}
+        dishes={rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          categoryName: row.category,
+        }))}
+        onApplyLocal={(attachments: LocalMediaAttachment[]) => {
+          const byDish = new Map<
+            string,
+            {
+              cropPreviewUrl?: string;
+              cropBlob?: Blob;
+              videoPreviewUrl?: string;
+              videoBlob?: Blob;
+            }
+          >();
+          for (const att of attachments) {
+            const cur = byDish.get(att.dishId) || {};
+            if (att.mediaKind === "video") {
+              cur.videoPreviewUrl = att.previewUrl;
+              cur.videoBlob = att.file;
+            } else {
+              cur.cropPreviewUrl = att.previewUrl;
+              cur.cropBlob = att.file;
+            }
+            byDish.set(att.dishId, cur);
+          }
+
+          setRows((current) =>
+            current.map((row) => {
+              const patch = byDish.get(row.id);
+              return patch ? { ...row, ...patch } : row;
+            })
+          );
+          setNotice(
+            `Matched and attached ${attachments.length} ${
+              attachments.length === 1 ? "photo/video" : "photos/videos"
+            } to your imported dishes.`
+          );
+        }}
+      />
     </div>
   );
 }

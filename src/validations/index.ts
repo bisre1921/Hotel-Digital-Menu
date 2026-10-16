@@ -115,4 +115,18 @@ export const bulkItemActionSchema = z.discriminatedUnion("action", [
     action: z.literal("delete"),
     itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
   }),
+  z.object({
+    action: z.literal("batch_assign_media"),
+    itemIds: z.array(z.string()).min(1, "At least one item ID is required"),
+    assignments: z
+      .array(
+        z.object({
+          itemId: z.string().min(1),
+          imageUrl: z.string().max(500).nullable().optional(),
+          videoUrl: z.string().max(500).nullable().optional(),
+        })
+      )
+      .min(1),
+  }),
 ]);
+

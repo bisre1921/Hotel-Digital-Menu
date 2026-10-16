@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Film, ImagePlus, Trash2, X } from "lucide-react";
 import type { ImportRow } from "@/lib/menu-import";
 
-export type ReviewRow = ImportRow & { id: string; checked: boolean };
+export type ReviewRow = ImportRow & {
+  id: string;
+  checked: boolean;
+  cropPreviewUrl?: string | null;
+  cropBlob?: Blob | null;
+  videoPreviewUrl?: string | null;
+  videoBlob?: Blob | null;
+};
 
 const compactInput =
   "w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50";
@@ -35,6 +42,9 @@ export function ImportReviewItem({
     row.price !== null &&
     row.price >= 0 &&
     row.price <= 1000000;
+
+  const photoPreview = row.cropPreviewUrl || row.imageUrl || null;
+  const videoPreview = row.videoPreviewUrl || row.videoUrl || null;
 
   return (
     <article
@@ -69,8 +79,86 @@ export function ImportReviewItem({
           </span>
         </label>
 
+        {/* Extracted or custom dish photo/video thumbnail */}
+        {!readOnly && (
+          <div className="flex shrink-0 items-center gap-1">
+            {photoPreview ? (
+              <div className="group relative h-9 w-9 overflow-hidden rounded-lg border border-primary/40 bg-muted">
+                <img
+                  src={photoPreview}
+                  alt={row.name || "Dish photo"}
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  type="button"
+                  title="Remove extracted photo"
+                  aria-label={`Remove photo for ${row.name || `item ${index + 1}`}`}
+                  onClick={() =>
+                    onEdit(row.id, {
+                      cropPreviewUrl: null,
+                      cropBlob: null,
+                      imageUrl: null,
+                      imageBox: null,
+                    })
+                  }
+                  className="absolute inset-0 flex items-center justify-center bg-black/65 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ) : (
+              <label
+                title="Attach dish photo"
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+              >
+                <ImagePlus size={14} />
+                <input
+                  type="file"
+                  accept="image/*,.img"
+                  className="hidden"
+                  disabled={!!busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const url = URL.createObjectURL(file);
+                    onEdit(row.id, {
+                      cropPreviewUrl: url,
+                      cropBlob: file,
+                    });
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+
+            {videoPreview && (
+              <div
+                title="Dish video attached"
+                className="group relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-primary/50 bg-primary/10 text-primary"
+              >
+                <Film size={14} />
+                <button
+                  type="button"
+                  title="Remove dish video"
+                  aria-label={`Remove video for ${row.name || `item ${index + 1}`}`}
+                  onClick={() =>
+                    onEdit(row.id, {
+                      videoPreviewUrl: null,
+                      videoBlob: null,
+                      videoUrl: null,
+                    })
+                  }
+                  className="absolute inset-0 flex items-center justify-center bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Item Name */}
-        <div className="min-w-[140px] flex-1">
+        <div className="min-w-[130px] flex-1">
           <input
             readOnly={readOnly}
             tabIndex={readOnly ? -1 : undefined}
@@ -98,7 +186,7 @@ export function ImportReviewItem({
         </div>
 
         {/* Price */}
-        <div className=" relative w-[46%] sm:w-28 shrink-0">
+        <div className="relative w-[46%] sm:w-28 shrink-0">
           <input
             readOnly={readOnly}
             tabIndex={readOnly ? -1 : undefined}
@@ -168,7 +256,7 @@ export function ImportReviewItem({
         </div>
       )}
 
-      {/* Show warning note only when price is missing or an explicit AI uncertainty note exists */}
+      {/* Show warning note only when price is missing */}
       {row.price === null && (
         <p className="mt-1.5 flex items-center gap-1.5 pl-7 text-[11px] font-medium text-amber-500">
           <AlertCircle size={12} className="shrink-0" />

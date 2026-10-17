@@ -448,6 +448,27 @@ Protected endpoints require authentication. You can authenticate in either of tw
         },
       },
     },
+    "/api/menus/{id}/export": {
+      get: {
+        tags: ["Hotel Menus"],
+        summary: "Export full menu hierarchy as JSON backup",
+        description: "Returns the complete menu data with all ordered courses, items, dietary tags, allergens, and hotel metadata. Supports ?download=true for browser attachment download.",
+        operationId: "exportMenuJson",
+        security: [{ BearerAuth: [] }, { CookieAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "download", in: "query", schema: { type: "boolean", default: false }, description: "Return as downloadable JSON attachment" },
+        ],
+        responses: {
+          "200": {
+            description: "Menu hierarchy JSON data",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+          "401": { description: "Unauthorized" },
+          "404": { description: "Menu not found" },
+        },
+      },
+    },
     "/api/categories": {
       get: {
         tags: ["Menu Categories"],

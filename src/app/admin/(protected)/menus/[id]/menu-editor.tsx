@@ -33,6 +33,8 @@ import {
   Zap,
   ScanLine,
   Wand2,
+  Search,
+  Filter,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { CategoryModal } from "./category-modal";
@@ -181,6 +183,10 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
   const [bulkMoveCategoryId, setBulkMoveCategoryId] = useState<string>("");
   const [bulkPriceMode, setBulkPriceMode] = useState<"percentage" | "fixed">("percentage");
   const [bulkPriceValue, setBulkPriceValue] = useState<string>("");
+
+  // Dish Search & Filter State
+  const [dishSearch, setDishSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "available" | "sold_out" | "specials">("all");
 
   const hotel = menu.hotel;
 
@@ -793,6 +799,53 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
             </div>
           )}
 
+          {/* Dish Search & Quick Filter Bar */}
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-subtle flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search dishes by name or description..."
+                value={dishSearch}
+                onChange={(e) => setDishSearch(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary/50 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+              />
+              {dishSearch && (
+                <button
+                  type="button"
+                  onClick={() => setDishSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {(
+                [
+                  { id: "all", label: "All Dishes" },
+                  { id: "available", label: "Available" },
+                  { id: "sold_out", label: "86'd / Sold Out" },
+                  { id: "specials", label: "Chef's Specials" },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setStatusFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border transition-all ${
+                    statusFilter === f.id
+                      ? "bg-primary text-black border-gold-500 font-bold"
+                      : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {menu.categories.length === 0 ? (
             <div className="p-8 sm:p-12 text-center rounded-3xl border border-dashed border-border bg-card/40 space-y-6">
               <div>
@@ -855,9 +908,22 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
           ) : (
             <div className="space-y-8">
               {menu.categories.map((category, catIndex) => {
+                const filteredItems = category.items.filter((item) => {
+                  if (dishSearch.trim()) {
+                    const q = dishSearch.toLowerCase();
+                    const matchName = item.name.toLowerCase().includes(q);
+                    const matchDesc = item.description?.toLowerCase().includes(q);
+                    if (!matchName && !matchDesc) return false;
+                  }
+                  if (statusFilter === "available" && !item.isAvailable) return false;
+                  if (statusFilter === "sold_out" && item.isAvailable) return false;
+                  if (statusFilter === "specials" && !item.isChefSpecial) return false;
+                  return true;
+                });
+
                 const allCatSelected =
-                  category.items.length > 0 &&
-                  category.items.every((i) => selectedItemIds.includes(i.id));
+                  filteredItems.length > 0 &&
+                  filteredItems.every((i) => selectedItemIds.includes(i.id));
                 const qa = quickAdd[category.id] || { name: "", price: "", description: "", saving: false };
 
                 return (
@@ -908,7 +974,11 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                             {category.name}
                           </h4>
                           <span className="text-[11px] text-muted-foreground">
-                            ({category.items.length})
+                            ({filteredItems.length}
+                            {filteredItems.length !== category.items.length
+                              ? ` of ${category.items.length}`
+                              : ""}
+                            )
                           </span>
                         </div>
                         {category.description && (
@@ -1010,9 +1080,13 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
                       <div className="p-6 text-center text-xs text-muted-foreground border border-dashed border-border rounded-2xl">
                         No dishes in this category yet. Type a name and price in the Quick Add bar above and press Enter, or click &quot;Full Dish Editor&quot;.
                       </div>
+                    ) : filteredItems.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground border border-dashed border-border rounded-2xl">
+                        No dishes in this category match your active search or filter.
+                      </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {category.items.map((item, itemIdx) => {
+                        {filteredItems.map((item, itemIdx) => {
                           const isSelected = selectedItemIds.includes(item.id);
                           const isEditingPrice = editingPriceItemId === item.id;
                           return (

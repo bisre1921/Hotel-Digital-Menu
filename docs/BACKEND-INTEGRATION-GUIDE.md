@@ -386,6 +386,53 @@ Generates vector SVG or high-resolution PNG QR codes pointing to immutable redir
 
 ---
 
+### 5.9 Export Menu Hierarchy (JSON Backup)
+Exports the entire menu tree with all ordered categories, dishes, prices, dietary tags, allergens, and hotel metadata for backups or POS integration.
+
+- **Method / Route**: `GET /api/menus/:id/export`
+- **Auth Required**: Yes (`STAFF`, `MANAGER`, or `OWNER`)
+- **Query Parameters**:
+  - `download` *(boolean: `true` \| `false`, default: `false`)* — When `true`, sets `Content-Disposition: attachment` for browser downloads.
+
+#### Response (`200 OK`)
+```json
+{
+  "version": "1.0",
+  "exportedAt": "2026-10-16T15:45:00.000Z",
+  "hotel": {
+    "id": "c1733838-1c89-4b81-a481-7434619fa760",
+    "name": "The Grand Azure Resort & Spa",
+    "currency": "EUR",
+    "currencySymbol": "€"
+  },
+  "menu": {
+    "id": "menu-uuid",
+    "title": "L'Étoile Fine Dining & Tasting",
+    "slug": "azure-letoile-dinner",
+    "isPublished": true,
+    "displayLayout": "GRID"
+  },
+  "categories": [
+    {
+      "id": "cat-uuid",
+      "name": "Starters & Appetizers",
+      "orderIndex": 1,
+      "items": [
+        {
+          "id": "item-uuid",
+          "name": "Oscietra Royal Caviar",
+          "price": 145.0,
+          "dietaryTags": ["PESCATARIAN"],
+          "allergens": ["DAIRY", "GLUTEN"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 ## 6. Category Operations
 
 ### 6.1 List Categories

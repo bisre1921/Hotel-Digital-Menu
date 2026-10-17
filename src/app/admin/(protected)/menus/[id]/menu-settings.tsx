@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Upload, CheckCircle2, Trash2, Save } from "lucide-react";
+import { Upload, CheckCircle2, Trash2, Save, Download, FileJson } from "lucide-react";
 import { slugify } from "@/lib/utils";
 
 interface MenuSettingsProps {
@@ -253,6 +253,27 @@ export function MenuSettings({ menu, onUpdate }: MenuSettingsProps) {
           </button>
         </div>
       </form>
+
+      {/* Export & Backup */}
+      <div className="p-6 rounded-3xl bg-card border border-border shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <FileJson className="w-4 h-4 text-gold-500" />
+            <span>Export Menu Data (JSON Backup)</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Download a complete offline copy of this menu, including all categories, dishes, prices, dietary tags, and allergens.
+          </p>
+        </div>
+        <a
+          href={`/api/menus/${menu.id}/export?download=true`}
+          download
+          className="py-2.5 px-4 rounded-xl text-xs font-semibold uppercase tracking-wider border border-border bg-secondary hover:bg-secondary/80 text-foreground flex items-center justify-center gap-2 transition-colors shrink-0"
+        >
+          <Download className="w-4 h-4 text-gold-500" />
+          <span>Download JSON</span>
+        </a>
+      </div>
 
       {/* Danger Zone */}
       <div className="p-6 rounded-3xl bg-destructive/5 border border-destructive/20 flex items-center justify-between">

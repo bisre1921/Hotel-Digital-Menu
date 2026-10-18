@@ -109,9 +109,12 @@ export async function PUT(req: Request, { params }: Params) {
       data: {
         categoryId: validated.data.categoryId,
         name: validated.data.name,
+        nameAm: validated.data.nameAm || null,
         description: validated.data.description,
+        descriptionAm: validated.data.descriptionAm || null,
         price: validated.data.price,
         discountPrice: validated.data.discountPrice,
+        variants: validated.data.variants ?? [],
         imageUrl: validated.data.imageUrl,
         videoUrl: validated.data.videoUrl,
         isAvailable: validated.data.isAvailable,

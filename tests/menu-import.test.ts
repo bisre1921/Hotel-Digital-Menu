@@ -8,6 +8,17 @@ import { tenantFromHost } from "../src/lib/tenant-host";
 import { buildStableMenuUrl } from "../src/lib/qr";
 import { getJwtSecret, signSessionToken, verifySessionToken } from "../src/lib/auth";
 import { Role } from "@prisma/client";
+import {
+  resolveLocalizedText,
+  splitInlineBilingual,
+  normalizeItemVariants,
+  isFastingFriendly,
+  isMenuActiveNow,
+  formatMenuSchedule,
+  computeMenuImportDiff,
+  buildBudgetMealCombos,
+} from "../src/lib/menu-helpers";
+import { hotelSlugSchema } from "../src/validations";
 
 describe("Reviewed menu imports", () => {
   it("preserves bilingual names, categories, descriptions and explicit zero prices", () => {
@@ -28,6 +39,7 @@ describe("Reviewed menu imports", () => {
     const items = parseMenuText("Coffee | 80");
     const draft = { importId: randomUUID(), title: "Cafe menu", reviewed: true, items };
     assert.equal(importCommitSchema.safeParse(draft).success, true);
+    assert.equal(importCommitSchema.safeParse({ ...draft, targetMenuId: "menu-123" }).success, true);
     for (const change of [{ reviewed: false }, { items: [] }, { items: [{ ...items[0], price: null }] }, { items: [{ ...items[0], price: -1 }] }, { items: [{ ...items[0], price: Infinity }] }]) {
       assert.equal(importCommitSchema.safeParse({ ...draft, ...change }).success, false);
     }
@@ -98,7 +110,7 @@ describe("Smart batch media matching", () => {
   });
 });
 
-describe("Public routing", () => {
+describe("Public routing & business address validation", () => {
   it("accepts a single business label only under the exact root domain", () => {
     assert.equal(tenantFromHost("Crave.Example.com:3000", "example.com"), "crave");
     assert.equal(tenantFromHost("crave.localhost:3000", "localhost"), "crave");
@@ -106,9 +118,111 @@ describe("Public routing", () => {
       assert.equal(tenantFromHost(host, "example.com"), null);
     }
   });
+  it("validates public business slugs and rejects reserved subdomains", () => {
+    assert.equal(hotelSlugSchema.safeParse("grand-azure-hotel").success, true);
+    assert.equal(hotelSlugSchema.safeParse("admin").success, false);
+    assert.equal(hotelSlugSchema.safeParse("api").success, false);
+    assert.equal(hotelSlugSchema.safeParse("a").success, false);
+    assert.equal(hotelSlugSchema.safeParse("-bad-slug").success, false);
+  });
   it("uses immutable IDs for printed QR destinations", () => {
     const id = randomUUID();
     assert.ok(buildStableMenuUrl(id).endsWith(`/q/${id}`));
+  });
+});
+
+describe("Bilingual localization, variants, fasting filter, scheduled menus, budget builder & menu diffing", () => {
+  it("resolves English and Amharic text from explicit fields or inline bilingual strings", () => {
+    assert.deepEqual(splitInlineBilingual("ፉል / Special Ful"), { en: "Special Ful", am: "ፉል" });
+    assert.equal(resolveLocalizedText("Special Ful", "ልዩ ፉል", "am"), "ልዩ ፉል");
+    assert.equal(resolveLocalizedText("ፉል / Special Ful", null, "en"), "Special Ful");
+    assert.equal(resolveLocalizedText("ፉል / Special Ful", null, "am"), "ፉል");
+  });
+
+  it("normalizes dish size/portion variants and detects fasting-friendly (ጾም) dishes", () => {
+    const variants = normalizeItemVariants([
+      { label: "Half / ግማሽ", price: 320 },
+      { label: "Full / ሙሉ", price: 580 },
+      { label: "", price: 100 },
+    ]);
+    assert.equal(variants.length, 2);
+    assert.equal(variants[0].price, 320);
+
+    assert.equal(isFastingFriendly({ name: "Beyaynetu", dietaryTags: ["Vegan"] }), true);
+    assert.equal(isFastingFriendly({ name: "የጾም ፍርፍር", dietaryTags: [] }), true);
+    assert.equal(isFastingFriendly({ name: "Doro Wat", dietaryTags: ["Spicy"] }), false);
+  });
+
+  it("evaluates scheduled time-of-day menus and formats schedule badges", () => {
+    // 08:30 on a Monday (day 1)
+    const mondayMorning = new Date("2026-10-19T08:30:00");
+    assert.equal(
+      isMenuActiveNow(
+        { activeStartTime: "06:30", activeEndTime: "11:00", activeDays: [1, 2, 3, 4, 5] },
+        mondayMorning
+      ),
+      true
+    );
+    assert.equal(
+      isMenuActiveNow(
+        { activeStartTime: "17:30", activeEndTime: "22:00", activeDays: [1, 2, 3, 4, 5] },
+        mondayMorning
+      ),
+      false
+    );
+    assert.equal(
+      formatMenuSchedule({ activeStartTime: "06:30", activeEndTime: "11:00", activeDays: [] }),
+      "Daily · 06:30–11:00"
+    );
+  });
+
+  it("computes non-destructive re-import diffs and builds budget meal combinations", () => {
+    const diff = computeMenuImportDiff(
+      [
+        {
+          name: "Mains",
+          items: [
+            { name: "Firfir Tibs", price: 400, imageUrl: "/uploads/firfir.jpg" },
+            { name: "Shiro Tegabino", price: 250, imageUrl: "/uploads/shiro.jpg" },
+          ],
+        },
+      ],
+      [
+        {
+          name: "Mains",
+          items: [
+            { name: "Firfir Tibs", price: 450 },
+            { name: "Kitfo Special", price: 650 },
+          ],
+        },
+      ]
+    );
+
+    assert.equal(diff.addedCount, 1);
+    assert.equal(diff.priceChangedCount, 1);
+    assert.equal(diff.preservedMissingItemsCount, 1);
+
+    const combos = buildBudgetMealCombos(
+      [
+        {
+          name: "Mains",
+          items: [
+            { id: "m1", name: "Shiro", price: 220, isAvailable: true },
+            { id: "m2", name: "Tibs", price: 380, isAvailable: true },
+          ],
+        },
+        {
+          name: "Drinks",
+          items: [
+            { id: "d1", name: "Macchiato", price: 80, isAvailable: true },
+          ],
+        },
+      ],
+      350,
+      { fastingOnly: false, maxResults: 3 }
+    );
+    assert.ok(combos.length >= 1);
+    assert.ok(combos.every((c) => c.totalPrice <= 350));
   });
 });
 

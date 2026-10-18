@@ -67,7 +67,9 @@ export async function PUT(req: Request, { params }: Params) {
       where: { id: params.id },
       data: {
         name: validated.data.name,
+        nameAm: validated.data.nameAm || null,
         description: validated.data.description,
+        descriptionAm: validated.data.descriptionAm || null,
         orderIndex: validated.data.orderIndex,
         imageUrl: validated.data.imageUrl,
         isActive: validated.data.isActive,

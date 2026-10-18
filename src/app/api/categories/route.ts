@@ -90,7 +90,9 @@ export async function POST(req: Request) {
       data: {
         menuId,
         name: validated.data.name,
+        nameAm: validated.data.nameAm || null,
         description: validated.data.description,
+        descriptionAm: validated.data.descriptionAm || null,
         imageUrl: validated.data.imageUrl,
         isActive: validated.data.isActive,
         orderIndex,

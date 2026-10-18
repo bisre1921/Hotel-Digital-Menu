@@ -16,8 +16,41 @@ export const registerSchema = z.object({
   country: z.string().optional(),
 });
 
+export const RESERVED_SUBDOMAINS = [
+  "www",
+  "admin",
+  "api",
+  "app",
+  "auth",
+  "business",
+  "dashboard",
+  "help",
+  "login",
+  "mail",
+  "menu",
+  "menus",
+  "portal",
+  "register",
+  "root",
+  "settings",
+  "status",
+  "support",
+] as const;
+
+export const hotelSlugSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2, "Address slug must be at least 2 characters")
+  .max(48, "Address slug must be at most 48 characters")
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use only lowercase letters, numbers, and single hyphens")
+  .refine((slug) => !RESERVED_SUBDOMAINS.includes(slug as any), {
+    message: "This address is reserved by the platform",
+  });
+
 export const hotelProfileSchema = z.object({
   name: z.string().min(2, "Hotel name is required"),
+  slug: hotelSlugSchema.optional(),
   tagline: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   starRating: z.coerce.number().min(1).max(5).default(5),
@@ -42,24 +75,50 @@ export const menuSchema = z.object({
   description: z.string().optional().nullable(),
   headerImageUrl: z.string().optional().nullable(),
   isPublished: z.boolean().default(false),
-  displayLayout: z.enum(["GRID", "LIST", "CARDS", "MAGAZINE"]).default("GRID"),
+  isDefault: z.boolean().default(false),
+  activeStartTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:MM 24h format")
+    .optional()
+    .or(z.literal(""))
+    .nullable(),
+  activeEndTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Use HH:MM 24h format")
+    .optional()
+    .or(z.literal(""))
+    .nullable(),
+  activeDays: z.array(z.coerce.number().int().min(0).max(6)).default([]),
+  displayLayout: z.enum(["GRID", "LIST", "CARDS", "MAGAZINE", "TABLE"]).default("GRID"),
   currencyOverride: z.string().optional().nullable(),
 });
 
 export const categorySchema = z.object({
   name: z.string().min(1, "Category name is required"),
+  nameAm: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  descriptionAm: z.string().optional().nullable(),
   orderIndex: z.coerce.number().default(0),
   imageUrl: z.string().optional().nullable(),
   isActive: z.boolean().default(true),
 });
 
+export const itemVariantSchema = z.object({
+  label: z.string().trim().min(1, "Variant label is required").max(60),
+  price: z.coerce.number().min(0, "Variant price must be positive"),
+});
+
+export type ItemVariant = z.infer<typeof itemVariantSchema>;
+
 export const itemSchema = z.object({
   categoryId: z.string().min(1, "Category is required"),
   name: z.string().min(1, "Item name is required"),
+  nameAm: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  descriptionAm: z.string().optional().nullable(),
   price: z.coerce.number().min(0, "Price must be positive"),
   discountPrice: z.coerce.number().min(0).optional().nullable(),
+  variants: z.array(itemVariantSchema).max(12).optional().nullable(),
   imageUrl: z.string().optional().nullable(),
   videoUrl: z.string().optional().nullable(),
   isAvailable: z.boolean().default(true),

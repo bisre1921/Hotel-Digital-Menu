@@ -95,6 +95,13 @@ export async function POST(req: Request) {
     const publicUrl = buildPublicMenuUrl(finalSlug);
     const qrCodeSvg = await generateQrSvg(buildStableMenuUrl(menuId));
 
+    if (validated.data.isDefault) {
+      await db.menu.updateMany({
+        where: { hotelId: session.hotelId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
     const newMenu = await db.menu.create({
       data: {
         id: menuId,
@@ -105,6 +112,10 @@ export async function POST(req: Request) {
         headerImageUrl: validated.data.headerImageUrl,
         isPublished: validated.data.isPublished,
         publishedAt: validated.data.isPublished ? new Date() : null,
+        isDefault: validated.data.isDefault ?? false,
+        activeStartTime: validated.data.activeStartTime || null,
+        activeEndTime: validated.data.activeEndTime || null,
+        activeDays: validated.data.activeDays ?? [],
         displayLayout: validated.data.displayLayout,
         currencyOverride: validated.data.currencyOverride,
         qrCodeSvg,

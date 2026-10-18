@@ -41,6 +41,23 @@ export async function PUT(req: Request) {
       );
     }
 
+    if (validated.data.slug) {
+      const conflict = await db.hotel.findFirst({
+        where: {
+          slug: validated.data.slug,
+          NOT: { id: session.hotelId },
+        },
+        select: { id: true },
+      });
+
+      if (conflict) {
+        return NextResponse.json(
+          { error: `The public address "${validated.data.slug}" is already taken.` },
+          { status: 409 }
+        );
+      }
+    }
+
     const updated = await db.hotel.update({
       where: { id: session.hotelId },
       data: validated.data,

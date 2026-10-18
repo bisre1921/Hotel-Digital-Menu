@@ -81,6 +81,17 @@ export async function PUT(req: Request, { params }: Params) {
     const qrCodeSvg = await generateQrSvg(buildStableMenuUrl(existing.id));
     const publicUrl = buildPublicMenuUrl(finalSlug);
 
+    if (validated.data.isDefault) {
+      await db.menu.updateMany({
+        where: {
+          hotelId: session.hotelId,
+          isDefault: true,
+          NOT: { id: params.id },
+        },
+        data: { isDefault: false },
+      });
+    }
+
     const updated = await db.menu.update({
       where: { id: params.id },
       data: {
@@ -93,6 +104,16 @@ export async function PUT(req: Request, { params }: Params) {
           validated.data.isPublished && !existing.isPublished
             ? new Date()
             : existing.publishedAt,
+        isDefault: validated.data.isDefault ?? existing.isDefault,
+        activeStartTime:
+          validated.data.activeStartTime !== undefined
+            ? validated.data.activeStartTime || null
+            : existing.activeStartTime,
+        activeEndTime:
+          validated.data.activeEndTime !== undefined
+            ? validated.data.activeEndTime || null
+            : existing.activeEndTime,
+        activeDays: validated.data.activeDays ?? existing.activeDays,
         displayLayout: validated.data.displayLayout,
         currencyOverride: validated.data.currencyOverride,
         qrCodeSvg,

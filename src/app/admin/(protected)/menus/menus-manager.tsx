@@ -19,9 +19,13 @@ import {
   Check,
   CheckCircle2,
   Eye,
+  FileJson,
+  Clock,
+  Star,
 } from "lucide-react";
 import { slugify } from "@/lib/utils";
 import { GuestShareModal } from "@/components/menu/guest-share-modal";
+import { formatMenuSchedule, isMenuActiveNow } from "@/lib/menu-helpers";
 
 interface MenuEntry {
   id: string;
@@ -31,6 +35,10 @@ interface MenuEntry {
   headerImageUrl?: string | null;
   isPublished: boolean;
   publishedAt?: string | null;
+  isDefault?: boolean;
+  activeStartTime?: string | null;
+  activeEndTime?: string | null;
+  activeDays?: number[];
   displayLayout: string;
   categoryCount: number;
   itemCount: number;
@@ -52,6 +60,7 @@ export function MenusManager({
   const [menus, setMenus] = useState<MenuEntry[]>(initialMenus);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedQrMenu, setSelectedQrMenu] = useState<MenuEntry | null>(null);
+  const [restoringJson, setRestoringJson] = useState(false);
 
   // Form State
   const [title, setTitle] = useState("");
@@ -63,6 +72,32 @@ export function MenusManager({
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleRestoreJsonBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoringJson(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const res = await fetch("/api/menus/import-json", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to restore JSON backup");
+      }
+      setMenus((prev) => [data.menu, ...prev]);
+      router.refresh();
+    } catch (err: any) {
+      alert(err.message || "Invalid JSON backup file");
+    } finally {
+      setRestoringJson(false);
+      e.target.value = "";
+    }
+  };
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
@@ -207,6 +242,17 @@ export function MenusManager({
         </div>
 
         <div className="flex flex-wrap gap-2">
+        <label className="cursor-pointer flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-semibold hover:border-primary transition-colors">
+          <FileJson className="h-4 w-4 text-gold-500" />
+          {restoringJson ? "Restoring..." : "Restore JSON Backup"}
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={handleRestoreJsonBackup}
+            disabled={restoringJson}
+            className="hidden"
+          />
+        </label>
         <Link href="/admin/menus/import" className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-xs font-semibold hover:border-primary"><Upload className="h-4 w-4" /> Import existing menu</Link>
         <button
           onClick={() => setIsCreateOpen(true)}
@@ -240,7 +286,7 @@ export function MenusManager({
               )}
 
               {/* Status Badge */}
-              <div className="absolute top-3 left-3">
+              <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleTogglePublish(menu.id, menu.isPublished)}
@@ -252,6 +298,11 @@ export function MenusManager({
                 >
                   {menu.isPublished ? "● Published" : "○ Draft"}
                 </button>
+                {menu.isDefault && (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider backdrop-blur-md bg-gold-500/90 text-black inline-flex items-center gap-1">
+                    <Star className="w-2.5 h-2.5 fill-current" /> Default
+                  </span>
+                )}
               </div>
 
               {/* QR Button in Header */}
@@ -278,6 +329,18 @@ export function MenusManager({
                 <div className="mt-1 text-xs text-muted-foreground font-mono">
                   /menu/{menu.slug}
                 </div>
+
+                {formatMenuSchedule(menu) && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                    <Clock className="w-3 h-3 text-gold-500" />
+                    <span>{formatMenuSchedule(menu)}</span>
+                    {isMenuActiveNow(menu) && (
+                      <span className="ml-1 text-[10px] font-semibold text-emerald-400">
+                        • Active
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {menu.description && (
                   <p className="mt-2 text-xs text-muted-foreground line-clamp-2 font-light">

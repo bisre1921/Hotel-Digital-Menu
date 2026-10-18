@@ -96,6 +96,45 @@ export function ProfileForm({ initialHotel, currentUser }: ProfileFormProps) {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [slugStatus, setSlugStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    reason?: string;
+  }>({ checking: false, available: true });
+  const [copiedSlugLink, setCopiedSlugLink] = useState(false);
+
+  React.useEffect(() => {
+    const clean = (formData.slug || "").trim().toLowerCase();
+    if (!clean || clean === initialHotel.slug) {
+      setSlugStatus({ checking: false, available: true, reason: "Current business address" });
+      return;
+    }
+
+    let cancelled = false;
+    setSlugStatus({ checking: true, available: null });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/hotel/check-slug?slug=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setSlugStatus({
+            checking: false,
+            available: Boolean(data.available),
+            reason: data.reason,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSlugStatus({ checking: false, available: null });
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.slug, initialHotel.slug]);
 
   // Team & Staff Management State (/api/hotel/users)
   const canManageTeam = !currentUser || currentUser.role === "OWNER" || currentUser.role === "MANAGER";
@@ -235,6 +274,10 @@ export function ProfileForm({ initialHotel, currentUser }: ProfileFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (slugStatus.available === false) {
+      alert(slugStatus.reason || "Please choose an available business address slug.");
+      return;
+    }
     setSaving(true);
     setSavedSuccess(false);
 
@@ -244,6 +287,7 @@ export function ProfileForm({ initialHotel, currentUser }: ProfileFormProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formData.name,
+          slug: formData.slug.trim().toLowerCase(),
           tagline: formData.tagline || null,
           description: formData.description || null,
           starRating: Number(formData.starRating),
@@ -323,6 +367,73 @@ export function ProfileForm({ initialHotel, currentUser }: ProfileFormProps) {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
                 />
+              </div>
+
+              {/* Public Business Address & Subdomain Picker */}
+              <div className="p-4 rounded-2xl bg-secondary/35 border border-border/80 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-gold-500" />
+                    Public Business Address & Subdomain
+                  </label>
+                  {slugStatus.checking ? (
+                    <span className="text-[11px] text-muted-foreground">Checking availability…</span>
+                  ) : slugStatus.available === true ? (
+                    <span className="text-[11px] font-semibold text-emerald-400">
+                      ✓ {slugStatus.reason || "Available"}
+                    </span>
+                  ) : slugStatus.available === false ? (
+                    <span className="text-[11px] font-semibold text-destructive">
+                      ✕ {slugStatus.reason || "Unavailable"}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center rounded-xl bg-card border border-border focus-within:border-gold-500 px-3 text-xs text-muted-foreground">
+                  <span className="font-mono">/business/</span>
+                  <input
+                    type="text"
+                    required
+                    value={formData.slug}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        slug: e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9-]/g, "-")
+                          .replace(/-+/g, "-"),
+                      })
+                    }
+                    placeholder="grand-azure-addis"
+                    className="w-full py-2.5 px-1 bg-transparent text-foreground font-mono focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/business/${formData.slug}`;
+                      navigator.clipboard.writeText(url);
+                      setCopiedSlugLink(true);
+                      setTimeout(() => setCopiedSlugLink(false), 2000);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-[11px] font-medium shrink-0"
+                  >
+                    {copiedSlugLink ? "Copied!" : "Copy Link"}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span>
+                    Subdomain ready: <code className="text-foreground font-mono">{formData.slug || "your-hotel"}.menu</code>
+                  </span>
+                  <a
+                    href={`/business/${formData.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-gold-500 hover:underline font-medium"
+                  >
+                    Open Public Hub →
+                  </a>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

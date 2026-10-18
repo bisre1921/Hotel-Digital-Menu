@@ -35,6 +35,13 @@ import {
   Wand2,
   Search,
   Filter,
+  Tablet,
+  Monitor,
+  LayoutGrid,
+  Table2,
+  Rows3,
+  BookOpen,
+  LayoutList,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 import { CategoryModal } from "./category-modal";
@@ -134,7 +141,7 @@ interface MenuFull {
   description?: string | null;
   headerImageUrl?: string | null;
   isPublished: boolean;
-  displayLayout: "GRID" | "LIST" | "CARDS" | "MAGAZINE";
+  displayLayout: "GRID" | "LIST" | "CARDS" | "MAGAZINE" | "TABLE";
   qrCodeSvg?: string | null;
   hotel: {
     id: string;
@@ -155,6 +162,11 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
   const [menu, setMenu] = useState<MenuFull>(initialMenu);
   const [activeTab, setActiveTab] = useState<"dishes" | "qr" | "settings" | "preview">("dishes");
   const [isBatchMediaOpen, setIsBatchMediaOpen] = useState(false);
+  const [previewDevice, setPreviewDevice] = useState<"mobile" | "tablet" | "desktop">("desktop");
+  const [previewLayout, setPreviewLayout] = useState<"CARDS" | "GRID" | "TABLE" | "MAGAZINE" | "LIST">(
+    initialMenu.displayLayout || "CARDS"
+  );
+  const [savingLayout, setSavingLayout] = useState(false);
 
   // Category Modal State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -617,7 +629,7 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
           { id: "dishes", label: "Dishes & Categories", icon: UtensilsCrossed },
           { id: "qr", label: "QR Code Studio", icon: QrCode },
           { id: "settings", label: "Menu Settings", icon: Settings },
-          { id: "preview", label: "Mobile Simulator", icon: Smartphone },
+          { id: "preview", label: "Live Menu Preview", icon: Smartphone },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1294,33 +1306,166 @@ export function MenuEditor({ initialMenu }: MenuEditorProps) {
         />
       )}
 
-      {/* Tab 4: Mobile Simulator Preview */}
+      {/* Tab 4: Multi-Device & Layout Live Preview Studio */}
       {activeTab === "preview" && (
-        <div className="flex flex-col items-center justify-center p-4">
-          <div className="text-center mb-6">
-            <span className="text-xs uppercase tracking-widest text-gold-500 font-semibold block">
-              Real-Time Table View Simulation
-            </span>
-            <p className="text-xs text-muted-foreground mt-1">
-              Test mobile interactions, responsive layouts, search, and category navigation.
-            </p>
+        <div className="space-y-6">
+          {/* Preview Studio Controls Bar */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-card border border-border shadow-subtle flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+            <div>
+              <span className="text-[11px] uppercase tracking-widest text-gold-500 font-semibold block">
+                Multi-Device &amp; Layout Preview Studio
+              </span>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Preview how guests experience your menu across Mobile phones, Table iPads, and Large screens—and test Cards, Grid, Table, Editorial, or Compact views.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Viewport Size Switcher */}
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60 border border-border">
+                {(
+                  [
+                    { id: "mobile", label: "Phone", icon: Smartphone },
+                    { id: "tablet", label: "Tablet / iPad", icon: Tablet },
+                    { id: "desktop", label: "Large Screen", icon: Monitor },
+                  ] as const
+                ).map((dev) => {
+                  const Icon = dev.icon;
+                  const active = previewDevice === dev.id;
+                  return (
+                    <button
+                      key={dev.id}
+                      type="button"
+                      onClick={() => setPreviewDevice(dev.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        active
+                          ? "bg-primary text-black font-bold shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{dev.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Layout Mode Switcher */}
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/60 border border-border overflow-x-auto no-scrollbar">
+                {(
+                  [
+                    { id: "CARDS", label: "Cards", icon: Rows3 },
+                    { id: "GRID", label: "Grid", icon: LayoutGrid },
+                    { id: "TABLE", label: "Table", icon: Table2 },
+                    { id: "MAGAZINE", label: "Editorial", icon: BookOpen },
+                    { id: "LIST", label: "Compact", icon: LayoutList },
+                  ] as const
+                ).map((lay) => {
+                  const Icon = lay.icon;
+                  const active = previewLayout === lay.id;
+                  return (
+                    <button
+                      key={lay.id}
+                      type="button"
+                      onClick={() => setPreviewLayout(lay.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all whitespace-nowrap ${
+                        active
+                          ? "bg-gold-500/20 text-gold-400 border border-gold-500/40 font-bold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{lay.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Save as Default Layout Button */}
+              {previewLayout !== menu.displayLayout && (
+                <button
+                  type="button"
+                  disabled={savingLayout}
+                  onClick={async () => {
+                    setSavingLayout(true);
+                    try {
+                      const res = await fetch(`/api/menus/${menu.id}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: menu.title,
+                          slug: menu.slug,
+                          description: menu.description,
+                          headerImageUrl: menu.headerImageUrl,
+                          isPublished: menu.isPublished,
+                          displayLayout: previewLayout,
+                        }),
+                      });
+                      if (res.ok) {
+                        setMenu((prev) => ({ ...prev, displayLayout: previewLayout as any }));
+                        setBulkMessage(`Saved ${previewLayout} as default menu layout!`);
+                        setTimeout(() => setBulkMessage(null), 3500);
+                      }
+                    } finally {
+                      setSavingLayout(false);
+                    }
+                  }}
+                  className="py-2 px-3.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors whitespace-nowrap"
+                >
+                  {savingLayout ? "Saving…" : `Set ${previewLayout} as Default`}
+                </button>
+              )}
+
+              <a
+                href={`/menu/${menu.slug}?preview=true&layout=${previewLayout}`}
+                target="_blank"
+                rel="noreferrer"
+                className="py-2 px-3.5 rounded-xl text-xs font-semibold border border-border bg-secondary/50 hover:bg-secondary text-foreground flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open Full Tab
+              </a>
+            </div>
           </div>
 
-          {/* Smartphone device shell */}
-          <div className="relative w-[380px] h-[740px] rounded-[48px] bg-black p-3.5 border-4 border-neutral-700 shadow-2xl">
-            {/* Top notch */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-20 flex items-center justify-center">
-              <div className="w-3 h-3 rounded-full bg-neutral-800" />
-            </div>
-
-            {/* Screen Frame */}
-            <div className="w-full h-full rounded-[38px] overflow-hidden bg-background relative z-10 border border-neutral-800">
-              <iframe
-                src={`/menu/${menu.slug}?preview=true`}
-                className="w-full h-full border-0"
-                title="Mobile menu preview simulation"
-              />
-            </div>
+          {/* Device Viewport Frame */}
+          <div className="flex flex-col items-center justify-center">
+            {previewDevice === "mobile" ? (
+              <div className="relative w-[390px] max-w-full h-[760px] rounded-[48px] bg-black p-3.5 border-4 border-neutral-700 shadow-2xl transition-all duration-300">
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-20 flex items-center justify-center">
+                  <div className="w-3 h-3 rounded-full bg-neutral-800" />
+                </div>
+                <div className="w-full h-full rounded-[38px] overflow-hidden bg-background relative z-10 border border-neutral-800">
+                  <iframe
+                    key={`${menu.slug}-${previewLayout}-mobile`}
+                    src={`/menu/${menu.slug}?preview=true&layout=${previewLayout}`}
+                    className="w-full h-full border-0"
+                    title="Mobile menu preview simulation"
+                  />
+                </div>
+              </div>
+            ) : previewDevice === "tablet" ? (
+              <div className="relative w-full max-w-[860px] h-[800px] rounded-[36px] bg-black p-4 border-4 border-neutral-700 shadow-2xl transition-all duration-300">
+                <div className="w-full h-full rounded-[24px] overflow-hidden bg-background relative z-10 border border-neutral-800">
+                  <iframe
+                    key={`${menu.slug}-${previewLayout}-tablet`}
+                    src={`/menu/${menu.slug}?preview=true&layout=${previewLayout}`}
+                    className="w-full h-full border-0"
+                    title="Tablet menu preview simulation"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-[840px] rounded-3xl bg-black p-2.5 border-2 border-neutral-700 shadow-2xl transition-all duration-300">
+                <div className="w-full h-full rounded-2xl overflow-hidden bg-background border border-neutral-800">
+                  <iframe
+                    key={`${menu.slug}-${previewLayout}-desktop`}
+                    src={`/menu/${menu.slug}?preview=true&layout=${previewLayout}`}
+                    className="w-full h-full border-0"
+                    title="Large screen menu preview simulation"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

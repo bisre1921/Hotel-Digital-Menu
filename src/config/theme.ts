@@ -47,6 +47,7 @@ export const PLATFORM_THEME: DesignTokens = {
 };
 
 export const DIETARY_OPTIONS = [
+  { label: "Fasting (ጾም)", value: "FASTING", color: "bg-lime-500/10 text-lime-700 dark:text-lime-400 border-lime-500/30" },
   { label: "Vegetarian", value: "VEGETARIAN", color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
   { label: "Vegan", value: "VEGAN", color: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30" },
   { label: "Gluten-Free", value: "GLUTEN_FREE", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30" },

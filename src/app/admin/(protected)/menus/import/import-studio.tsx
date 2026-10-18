@@ -15,6 +15,7 @@ import {
   FileText,
   ImagePlus,
   Plus,
+  RefreshCw,
   ScanLine,
   Search,
   Sparkles,
@@ -31,6 +32,7 @@ import {
   type ExtractedBrand,
   type ImportRow,
 } from "@/lib/menu-import";
+import { computeMenuImportDiff } from "@/lib/menu-helpers";
 import {
   ImportReviewItem,
   type ReviewRow,
@@ -216,6 +218,26 @@ export function MenuImportStudio({
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [applyBrandToHotel, setApplyBrandToHotel] = useState(false);
 
+  // Re-Import / Diff & Merge into an existing menu
+  const [existingMenus, setExistingMenus] = useState<
+    Array<{ id: string; title: string; itemCount: number }>
+  >([]);
+  const [targetMenuId, setTargetMenuId] = useState<string>("");
+  const [targetMenuDetails, setTargetMenuDetails] = useState<{
+    id: string;
+    title: string;
+    categories: Array<{
+      name: string;
+      items: Array<{
+        name: string;
+        price: number;
+        description?: string | null;
+        imageUrl?: string | null;
+        videoUrl?: string | null;
+      }>;
+    }>;
+  } | null>(null);
+
   // Filtering & search for compact listing
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
@@ -226,6 +248,60 @@ export function MenuImportStudio({
   const storageKey = `menu-import-v1:${businessId}`;
   const savingRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/menus")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.menus)) {
+          setExistingMenus(
+            data.menus.map((m: any) => ({
+              id: m.id,
+              title: m.title,
+              itemCount: Number(m.itemCount || 0),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!targetMenuId) {
+      setTargetMenuDetails(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/menus/${targetMenuId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.menu) {
+          setTargetMenuDetails({
+            id: data.menu.id,
+            title: data.menu.title,
+            categories: Array.isArray(data.menu.categories)
+              ? data.menu.categories.map((cat: any) => ({
+                  name: cat.name,
+                  items: Array.isArray(cat.items)
+                    ? cat.items.map((item: any) => ({
+                        name: item.name,
+                        price: Number(item.price),
+                        description: item.description,
+                        imageUrl: item.imageUrl,
+                        videoUrl: item.videoUrl,
+                      }))
+                    : [],
+                }))
+              : [],
+          });
+          setTitle(data.menu.title);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [targetMenuId]);
 
   useEffect(() => {
     try {
@@ -516,6 +592,7 @@ export function MenuImportStudio({
 
       const result = importCommitSchema.safeParse({
         importId,
+        targetMenuId: targetMenuId || undefined,
         title: title.trim(),
         reviewed: confirmed,
         items: itemsWithUploadedUrls,
@@ -588,6 +665,40 @@ export function MenuImportStudio({
     }
     return Array.from(counts.entries());
   }, [rows]);
+
+  const diffSummary = useMemo(() => {
+    if (!targetMenuDetails || rows.length === 0) return null;
+    const grouped = new Map<
+      string,
+      Array<{
+        name: string;
+        price: number;
+        description?: string | null;
+        imageUrl?: string | null;
+        videoUrl?: string | null;
+      }>
+    >();
+    for (const r of rows) {
+      if (!r.name.trim()) continue;
+      const cat = r.category.trim() || "Menu";
+      const list = grouped.get(cat) || [];
+      list.push({
+        name: r.name.trim(),
+        price: r.price ?? 0,
+        description: r.description || null,
+        imageUrl: r.imageUrl || r.cropPreviewUrl || null,
+        videoUrl: r.videoUrl || r.videoPreviewUrl || null,
+      });
+      grouped.set(cat, list);
+    }
+    const incomingCategories = Array.from(grouped.entries()).map(
+      ([name, items]) => ({ name, items })
+    );
+    return computeMenuImportDiff(
+      targetMenuDetails.categories,
+      incomingCategories
+    );
+  }, [targetMenuDetails, rows]);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1191,6 +1302,55 @@ export function MenuImportStudio({
                 </div>
               </div>
 
+              {/* Destination: Create New Menu vs. Update Existing Menu (Diff & Merge) */}
+              {existingMenus.length > 0 && (
+                <div className="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                      <RefreshCw size={13} className="text-primary" />
+                      <span>Import Mode:</span>
+                    </div>
+                    <select
+                      aria-label="Import destination menu"
+                      value={targetMenuId}
+                      onChange={(e) => setTargetMenuId(e.target.value)}
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="">Create a new draft menu</option>
+                      {existingMenus.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          Update existing: {m.title} ({m.itemCount} items)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {targetMenuId && diffSummary && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2.5 text-[11px]">
+                      <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-400">
+                        +{diffSummary.addedCount} New
+                      </span>
+                      <span className="rounded-md bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-400">
+                        {diffSummary.priceChangedCount} Price Changes
+                      </span>
+                      {diffSummary.updatedCount > 0 && (
+                        <span className="rounded-md bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                          {diffSummary.updatedCount} Updated
+                        </span>
+                      )}
+                      <span className="rounded-md bg-muted px-2 py-0.5 text-muted-foreground">
+                        {diffSummary.unchangedCount} Unchanged
+                      </span>
+                      {diffSummary.preservedMissingItemsCount > 0 && (
+                        <span className="text-muted-foreground">
+                          · Preserving {diffSummary.preservedMissingItemsCount} existing dishes &amp; photos not in this upload
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Bulk Actions & Filter Bar */}
               <div className="mt-3 flex flex-col gap-2.5 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1469,8 +1629,10 @@ export function MenuImportStudio({
                 />
                 <span>
                   I have reviewed every item, price and category. All prices use{" "}
-                  <strong>{currency}</strong>. Save these as a new unpublished
-                  menu
+                  <strong>{currency}</strong>.{" "}
+                  {targetMenuId
+                    ? "Merge these updates into the selected menu while preserving existing dish photos"
+                    : "Save these as a new unpublished menu"}
                   {photosCount > 0
                     ? ` (including ${photosCount} dish ${
                         photosCount === 1 ? "photo/video" : "photos/videos"
@@ -1487,7 +1649,9 @@ export function MenuImportStudio({
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground transition-opacity disabled:opacity-40"
               >
                 {busy === "save"
-                  ? "Uploading media & saving draft…"
+                  ? "Uploading media & saving…"
+                  : targetMenuId
+                  ? "Merge & update existing menu"
                   : "Save reviewed draft"}
                 <ArrowRight size={17} />
               </button>

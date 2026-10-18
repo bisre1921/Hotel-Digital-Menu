@@ -7,8 +7,20 @@ import { X } from "lucide-react";
 interface CategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: { name: string; description: string; imageUrl?: string }) => Promise<void>;
-  initialData?: { name: string; description?: string | null; imageUrl?: string | null } | null;
+  onSave: (data: {
+    name: string;
+    nameAm?: string | null;
+    description: string;
+    descriptionAm?: string | null;
+    imageUrl?: string;
+  }) => Promise<void>;
+  initialData?: {
+    name: string;
+    nameAm?: string | null;
+    description?: string | null;
+    descriptionAm?: string | null;
+    imageUrl?: string | null;
+  } | null;
 }
 
 export function CategoryModal({
@@ -18,18 +30,24 @@ export function CategoryModal({
   initialData,
 }: CategoryModalProps) {
   const [name, setName] = useState("");
+  const [nameAm, setNameAm] = useState("");
   const [description, setDescription] = useState("");
+  const [descriptionAm, setDescriptionAm] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
       setName(initialData.name || "");
+      setNameAm(initialData.nameAm || "");
       setDescription(initialData.description || "");
+      setDescriptionAm(initialData.descriptionAm || "");
       setImageUrl(initialData.imageUrl || "");
     } else {
       setName("");
+      setNameAm("");
       setDescription("");
+      setDescriptionAm("");
       setImageUrl("");
     }
   }, [initialData, isOpen]);
@@ -40,7 +58,13 @@ export function CategoryModal({
     e.preventDefault();
     setSaving(true);
     try {
-      await onSave({ name, description, imageUrl: imageUrl || undefined });
+      await onSave({
+        name,
+        nameAm: nameAm.trim() || null,
+        description,
+        descriptionAm: descriptionAm.trim() || null,
+        imageUrl: imageUrl || undefined,
+      });
       onClose();
     } catch (err: any) {
       alert(err.message || "Failed to save category");
@@ -77,22 +101,37 @@ export function CategoryModal({
             {initialData ? "Edit Menu Category" : "Add Menu Category"}
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Organize dishes into cohesive courses (e.g., Starters, Prime Cuts, Caviar Bar, Desserts).
+            Organize dishes into cohesive courses (e.g., Starters, Traditional Dishes / የባህል ምግቦች, Drinks).
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Category Name
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Artisanal Starters & Crudos"
-                className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Category Name (EN) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Breakfast"
+                  className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  ስም በአማርኛ (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={nameAm}
+                  onChange={(e) => setNameAm(e.target.value)}
+                  placeholder="ምሳሌ፦ ቁርስ"
+                  className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
+                />
+              </div>
             </div>
 
             <div>
@@ -104,6 +143,19 @@ export function CategoryModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief introduction displayed above this section..."
+                className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                መግለጫ በአማርኛ (Optional)
+              </label>
+              <textarea
+                rows={2}
+                value={descriptionAm}
+                onChange={(e) => setDescriptionAm(e.target.value)}
+                placeholder="የምድቡ አጭር መግለጫ..."
                 className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
               />
             </div>

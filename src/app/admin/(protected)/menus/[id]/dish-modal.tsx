@@ -3,15 +3,20 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Upload, Video, Sparkles, Check, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { X, Upload, Video, Sparkles, Check, ChevronDown, ChevronUp, Plus, Trash2, Languages } from "lucide-react";
 import { DIETARY_OPTIONS, ALLERGEN_OPTIONS } from "@/config/theme";
+import { normalizeItemVariants } from "@/lib/menu-helpers";
+import type { ItemVariant } from "@/validations";
 
 export interface DishFormData {
   categoryId: string;
   name: string;
+  nameAm?: string | null;
   description?: string | null;
+  descriptionAm?: string | null;
   price: number;
   discountPrice?: number | null;
+  variants?: ItemVariant[] | null;
   imageUrl?: string | null;
   videoUrl?: string | null;
   isAvailable: boolean;
@@ -29,7 +34,7 @@ interface DishModalProps {
   onSave: (data: DishFormData) => Promise<void>;
   categoryId: string;
   categories?: { id: string; name: string }[];
-  initialData?: (DishFormData & { id?: string }) | null;
+  initialData?: (DishFormData & { id?: string; variants?: unknown }) | null;
   currencySymbol: string;
 }
 
@@ -45,9 +50,12 @@ export function DishModal({
   const [formData, setFormData] = useState<DishFormData>({
     categoryId,
     name: "",
+    nameAm: "",
     description: "",
+    descriptionAm: "",
     price: 0,
     discountPrice: null,
+    variants: [],
     imageUrl: "",
     videoUrl: "",
     isAvailable: true,
@@ -63,6 +71,8 @@ export function DishModal({
   const [discountInput, setDiscountInput] = useState("");
   const [caloriesInput, setCaloriesInput] = useState("");
   const [prepTimeInput, setPrepTimeInput] = useState("");
+  const [variantRows, setVariantRows] = useState<Array<{ label: string; price: string }>>([]);
+  const [showBilingual, setShowBilingual] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
 
@@ -73,10 +83,14 @@ export function DishModal({
   useEffect(() => {
     setSavedBanner(null);
     if (initialData) {
+      const normalizedVariants = normalizeItemVariants(initialData.variants);
       setFormData({
         ...initialData,
         categoryId: initialData.categoryId || categoryId,
+        nameAm: initialData.nameAm || "",
         description: initialData.description || "",
+        descriptionAm: initialData.descriptionAm || "",
+        variants: normalizedVariants,
         imageUrl: initialData.imageUrl || "",
         videoUrl: initialData.videoUrl || "",
         discountPrice: initialData.discountPrice || null,
@@ -89,6 +103,13 @@ export function DishModal({
       setDiscountInput(initialData.discountPrice ? String(initialData.discountPrice) : "");
       setCaloriesInput(initialData.calories ? String(initialData.calories) : "");
       setPrepTimeInput(initialData.prepTimeMinutes ? String(initialData.prepTimeMinutes) : "");
+      setVariantRows(
+        normalizedVariants.map((v) => ({
+          label: v.label,
+          price: String(v.price),
+        }))
+      );
+      setShowBilingual(Boolean(initialData.nameAm || initialData.descriptionAm));
       const hasAdv = Boolean(
         initialData.discountPrice ||
           initialData.videoUrl ||
@@ -102,9 +123,12 @@ export function DishModal({
       setFormData({
         categoryId,
         name: "",
+        nameAm: "",
         description: "",
+        descriptionAm: "",
         price: 0,
         discountPrice: null,
+        variants: [],
         imageUrl: "",
         videoUrl: "",
         isAvailable: true,
@@ -119,6 +143,8 @@ export function DishModal({
       setDiscountInput("");
       setCaloriesInput("");
       setPrepTimeInput("");
+      setVariantRows([]);
+      setShowBilingual(false);
       setShowAdvanced(false);
     }
   }, [initialData, categoryId, isOpen]);
@@ -175,7 +201,18 @@ export function DishModal({
   };
 
   const submitForm = async (keepOpen: boolean) => {
-    const parsedPrice = parseFloat(priceInput);
+    const cleanedVariants: ItemVariant[] = variantRows
+      .map((row) => ({
+        label: row.label.trim(),
+        price: parseFloat(row.price),
+      }))
+      .filter((v) => v.label && Number.isFinite(v.price) && v.price >= 0);
+
+    let parsedPrice = parseFloat(priceInput);
+    if ((Number.isNaN(parsedPrice) || parsedPrice < 0) && cleanedVariants.length > 0) {
+      parsedPrice = cleanedVariants[0].price;
+    }
+
     if (!formData.name.trim() || Number.isNaN(parsedPrice) || parsedPrice < 0) {
       alert("Please enter a valid dish name and price.");
       return;
@@ -188,9 +225,13 @@ export function DishModal({
       await onSave({
         ...formData,
         name: formData.name.trim(),
+        nameAm: formData.nameAm?.trim() || null,
+        description: formData.description?.trim() || "",
+        descriptionAm: formData.descriptionAm?.trim() || null,
         categoryId: activeCatId,
         price: parsedPrice,
         discountPrice: discountInput.trim() ? parseFloat(discountInput) : null,
+        variants: cleanedVariants,
         calories: caloriesInput.trim() ? parseInt(caloriesInput, 10) : null,
         prepTimeMinutes: prepTimeInput.trim() ? parseInt(prepTimeInput, 10) : null,
       });
@@ -200,9 +241,12 @@ export function DishModal({
         setFormData({
           categoryId: activeCatId,
           name: "",
+          nameAm: "",
           description: "",
+          descriptionAm: "",
           price: 0,
           discountPrice: null,
+          variants: [],
           imageUrl: "",
           videoUrl: "",
           isAvailable: true,
@@ -217,6 +261,7 @@ export function DishModal({
         setDiscountInput("");
         setCaloriesInput("");
         setPrepTimeInput("");
+        setVariantRows([]);
         setSavedBanner(`"${addedName}" added! Ready for the next dish.`);
       } else {
         onClose();
@@ -336,9 +381,19 @@ export function DishModal({
 
             {/* Description */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Description & Ingredients (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Description & Ingredients (Optional)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowBilingual((prev) => !prev)}
+                  className="text-[11px] font-semibold text-gold-500 hover:underline flex items-center gap-1"
+                >
+                  <Languages className="w-3.5 h-3.5" />
+                  <span>{showBilingual ? "Hide Amharic (አማርኛ)" : "+ Add Amharic (አማርኛ)"}</span>
+                </button>
+              </div>
               <textarea
                 rows={2}
                 value={formData.description ?? ""}
@@ -346,6 +401,135 @@ export function DishModal({
                 placeholder="Craftsmanship details, provenance of ingredients, pairing notes..."
                 className="w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border focus:border-gold-500 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold-500/20"
               />
+            </div>
+
+            {/* Optional Amharic Localization Fields */}
+            {showBilingual && (
+              <div className="p-3.5 rounded-2xl bg-gold-500/5 border border-gold-500/25 space-y-3">
+                <div className="text-xs font-semibold text-gold-400 flex items-center gap-1.5">
+                  <Languages className="w-3.5 h-3.5" />
+                  <span>Amharic Translation (አማርኛ)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                      የምግብ ስም በአማርኛ (Dish Name in Amharic)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.nameAm ?? ""}
+                      onChange={(e) => setFormData({ ...formData, nameAm: e.target.value })}
+                      placeholder="ምሳሌ፦ ልዩ ፉል / ክትፎ"
+                      className="w-full px-3 py-2 rounded-xl bg-secondary/60 border border-border focus:border-gold-500 text-xs text-foreground focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
+                      መግለጫ በአማርኛ (Description in Amharic)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.descriptionAm ?? ""}
+                      onChange={(e) => setFormData({ ...formData, descriptionAm: e.target.value })}
+                      placeholder="ምሳሌ፦ በቅቤ እና በሚጥሚጣ የተዘጋጀ..."
+                      className="w-full px-3 py-2 rounded-xl bg-secondary/60 border border-border focus:border-gold-500 text-xs text-foreground focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Portion Sizes / Variants */}
+            <div className="p-3.5 rounded-2xl bg-secondary/25 border border-border space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Sizes / Portion Variants (Optional)
+                  </span>
+                  <p className="text-[11px] text-muted-foreground">
+                    Add Small / Medium / Large, Half / Full Kilo, or Glass / Bottle prices.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {variantRows.length === 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVariantRows([
+                            { label: "Small", price: priceInput || "0" },
+                            { label: "Medium", price: "" },
+                            { label: "Large", price: "" },
+                          ])
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-secondary border border-border text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        + S / M / L
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVariantRows([
+                            { label: "Half Kilo (ግማሽ ኪሎ)", price: priceInput || "0" },
+                            { label: "Full Kilo (ሙሉ ኪሎ)", price: "" },
+                          ])
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-secondary border border-border text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        + ½ / 1 Kilo
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setVariantRows((prev) => [...prev, { label: "", price: "" }])}
+                    className="px-2.5 py-1 rounded-lg bg-gold-500/15 border border-gold-500/30 text-[11px] font-semibold text-gold-400 hover:bg-gold-500/25 flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Add Size
+                  </button>
+                </div>
+              </div>
+
+              {variantRows.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  {variantRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={row.label}
+                        onChange={(e) =>
+                          setVariantRows((prev) =>
+                            prev.map((r, i) => (i === idx ? { ...r, label: e.target.value } : r))
+                          )
+                        }
+                        placeholder="Size / Portion (e.g. Large, Full Kilo)"
+                        className="flex-1 px-3 py-1.5 rounded-xl bg-secondary/60 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={row.price}
+                        onChange={(e) =>
+                          setVariantRows((prev) =>
+                            prev.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r))
+                          )
+                        }
+                        placeholder={`Price (${currencySymbol})`}
+                        className="w-32 px-3 py-1.5 rounded-xl bg-secondary/60 border border-border text-xs text-foreground focus:outline-none focus:border-gold-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setVariantRows((prev) => prev.filter((_, i) => i !== idx))}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400"
+                        title="Remove size"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Photo Upload */}

@@ -41,7 +41,7 @@ export async function GET(
     }
 
     const exportPayload = {
-      version: "1.0",
+      version: "1.1",
       exportedAt: new Date().toISOString(),
       hotel: menu.hotel,
       menu: {
@@ -50,21 +50,30 @@ export async function GET(
         slug: menu.slug,
         description: menu.description,
         isPublished: menu.isPublished,
+        isDefault: menu.isDefault,
+        activeStartTime: menu.activeStartTime,
+        activeEndTime: menu.activeEndTime,
+        activeDays: menu.activeDays,
         displayLayout: menu.displayLayout,
         headerImageUrl: menu.headerImageUrl,
       },
       categories: menu.categories.map((c) => ({
         id: c.id,
         name: c.name,
+        nameAm: c.nameAm,
         description: c.description,
+        descriptionAm: c.descriptionAm,
         orderIndex: c.orderIndex,
         isActive: c.isActive,
         items: c.items.map((i) => ({
           id: i.id,
           name: i.name,
+          nameAm: i.nameAm,
           description: i.description,
+          descriptionAm: i.descriptionAm,
           price: i.price,
           discountPrice: i.discountPrice,
+          variants: i.variants,
           imageUrl: i.imageUrl,
           videoUrl: i.videoUrl,
           isAvailable: i.isAvailable,

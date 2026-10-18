@@ -18,6 +18,7 @@ enum MenuLayout {
   LIST
   CARDS
   MAGAZINE
+  TABLE
 }
 
 model Hotel {
@@ -75,6 +76,10 @@ model Menu {
   headerImageUrl  String?
   isPublished     Boolean          @default(false)
   publishedAt     DateTime?
+  isDefault       Boolean          @default(false)
+  activeStartTime String?          // e.g. "06:00"
+  activeEndTime   String?          // e.g. "11:00"
+  activeDays      Int[]            @default([]) // 0 = Sun ... 6 = Sat
   currencyOverride String?
   displayLayout   MenuLayout       @default(GRID)
   qrCodeSvg       String?          @db.Text
@@ -90,19 +95,21 @@ model Menu {
 }
 
 model MenuCategory {
-  id          String     @id @default(uuid())
-  menuId      String
-  name        String
-  description String?
-  orderIndex  Int        @default(0)
-  icon        String?
-  imageUrl    String?
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id            String     @id @default(uuid())
+  menuId        String
+  name          String
+  nameAm        String?
+  description   String?
+  descriptionAm String?
+  orderIndex    Int        @default(0)
+  icon          String?
+  imageUrl      String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
-  menu        Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  items       MenuItem[]
+  menu          Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  items         MenuItem[]
 
   @@index([menuId])
 }
@@ -111,9 +118,12 @@ model MenuItem {
   id              String       @id @default(uuid())
   categoryId      String
   name            String
+  nameAm          String?
   description     String?
+  descriptionAm   String?
   price           Float
   discountPrice   Float?
+  variants        Json?        // Array of { label: string, price: number }
   imageUrl        String?
   videoUrl        String?
   isAvailable     Boolean      @default(true)

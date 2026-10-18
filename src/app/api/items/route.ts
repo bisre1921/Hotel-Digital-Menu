@@ -42,7 +42,9 @@ export async function GET(req: Request) {
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
+        { nameAm: { contains: search, mode: "insensitive" } },
         { description: { contains: search, mode: "insensitive" } },
+        { descriptionAm: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -72,6 +74,7 @@ export async function GET(req: Request) {
             select: {
               id: true,
               name: true,
+              nameAm: true,
               menuId: true,
               menu: {
                 select: {
@@ -146,9 +149,12 @@ export async function POST(req: Request) {
       data: {
         categoryId: validated.data.categoryId,
         name: validated.data.name,
+        nameAm: validated.data.nameAm || null,
         description: validated.data.description,
+        descriptionAm: validated.data.descriptionAm || null,
         price: validated.data.price,
         discountPrice: validated.data.discountPrice,
+        variants: validated.data.variants ?? [],
         imageUrl: validated.data.imageUrl,
         videoUrl: validated.data.videoUrl,
         isAvailable: validated.data.isAvailable,

@@ -36,6 +36,7 @@ export const extractedMenuSchema = z.object({
 
 export const importCommitSchema = z.object({
   importId: z.string().uuid(),
+  targetMenuId: z.string().min(1).max(120).optional(),
   title: z.string().trim().min(2).max(120),
   reviewed: z.literal(true),
   items: z

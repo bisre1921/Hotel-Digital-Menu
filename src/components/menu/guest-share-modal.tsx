@@ -3,7 +3,18 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { generateQrSvg, buildStableMenuUrl } from "@/lib/qr";
-import { X, Copy, Check, Share2, Download, QrCode } from "lucide-react";
+import {
+  X,
+  Copy,
+  Check,
+  Share2,
+  Download,
+  QrCode,
+  Flame,
+  Utensils,
+} from "lucide-react";
+import type { GuestLanguage } from "@/lib/menu-helpers";
+import styles from "./guest-menu.module.css";
 
 interface GuestShareModalProps {
   isOpen: boolean;
@@ -13,6 +24,7 @@ interface GuestShareModalProps {
   menuSlug: string;
   menuId?: string;
   qrCodeSvg?: string | null;
+  lang?: GuestLanguage;
 }
 
 export function GuestShareModal({
@@ -23,23 +35,33 @@ export function GuestShareModal({
   menuSlug,
   menuId,
   qrCodeSvg,
+  lang = "en",
 }: GuestShareModalProps) {
   const [copied, setCopied] = useState(false);
-
   const [stableSvg, setStableSvg] = useState("");
+
   useEffect(() => {
     if (!isOpen || !menuId) return;
     let active = true;
-    generateQrSvg(buildStableMenuUrl(menuId)).then((svg) => { if (active) setStableSvg(svg); }).catch(() => {});
-    return () => { active = false; };
+    generateQrSvg(buildStableMenuUrl(menuId))
+      .then((svg) => {
+        if (active) setStableSvg(svg);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [isOpen, menuId]);
 
   if (!isOpen) return null;
 
-  const currentUrl = menuId ? buildStableMenuUrl(menuId) :
-    typeof window !== "undefined"
-      ? `${window.location.origin}/menu/${menuSlug}`
-      : `/menu/${menuSlug}`;
+  const currentUrl = menuId
+    ? buildStableMenuUrl(menuId)
+    : typeof window !== "undefined"
+    ? `${window.location.origin}/menu/${menuSlug}`
+    : `/menu/${menuSlug}`;
+
+  const activeQrSvg = menuId ? stableSvg : qrCodeSvg || "";
 
   const handleCopy = async () => {
     try {
@@ -51,95 +73,158 @@ export function GuestShareModal({
     }
   };
 
+  const handleDownloadQr = () => {
+    if (!activeQrSvg) return;
+    try {
+      const blob = new Blob([activeQrSvg], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${menuSlug || "hotel-menu"}-qr.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
+
   const handleNativeShare = async () => {
-    if (navigator.share) {
+    if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: `${hotelName} - ${menuTitle}`,
+          title: `${hotelName} — ${menuTitle}`,
           text: `Explore the digital menu for ${menuTitle} at ${hotelName}`,
           url: currentUrl,
         });
-      } catch (e) {
+        return;
+      } catch {
         // user aborted share
       }
     }
+    await handleCopy();
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className={styles.shareOverlay}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm"
-        />
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          initial={{ opacity: 0, scale: 0.94, y: 18 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-sm rounded-3xl bg-card border border-border p-6 shadow-luxury z-10 text-center"
+          exit={{ opacity: 0, scale: 0.94, y: 18 }}
+          className={styles.shareModalCard}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share Menu & QR Code"
         >
           <button
+            type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full text-muted-foreground hover:text-foreground"
+            className={styles.shareCloseBtn}
+            aria-label="Close share modal"
           >
-            <X className="w-4 h-4" />
+            <X size={16} />
           </button>
 
-          <div className="w-12 h-12 rounded-full bg-gold-500/10 text-gold-400 mx-auto flex items-center justify-center mb-3">
-            <QrCode className="w-6 h-6" />
+          <div className={styles.shareEmblemBadge}>
+            <Utensils size={16} />
+            <Flame size={18} />
           </div>
 
-          <h3 className="font-serif text-xl font-medium text-foreground">{menuTitle}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{hotelName}</p>
+          <span className={styles.shareModalEyebrow}>
+            {lang === "am" ? "የዲጂታል ምናሌ QR" : "INSTANT TABLE QR & LINK"}
+          </span>
+          <h3 className={styles.shareModalTitle}>{hotelName}</h3>
+          <p className={styles.shareModalSubtitle}>{menuTitle}</p>
 
-          {/* QR Code Container */}
-          <div className="mt-5 p-4 bg-white rounded-2xl mx-auto w-52 h-52 flex items-center justify-center shadow-inner">
-            {(menuId ? stableSvg : qrCodeSvg) ? (
+          {/* QR Code Showcase Frame */}
+          <div className={styles.shareQrFrame}>
+            {activeQrSvg ? (
               <div
-                className="w-full h-full [&>svg]:w-full [&>svg]:h-full"
-                dangerouslySetInnerHTML={{ __html: menuId ? stableSvg : qrCodeSvg! }}
+                className={styles.shareQrSvgBox}
+                dangerouslySetInnerHTML={{ __html: activeQrSvg }}
               />
             ) : (
-              <div className="text-xs text-black/60 font-sans">Generating QR code...</div>
+              <div className={styles.shareQrLoading}>
+                <QrCode size={28} />
+                <span>
+                  {lang === "am"
+                    ? "QR ኮድ በማዘጋጀት ላይ..."
+                    : "Generating QR code..."}
+                </span>
+              </div>
             )}
           </div>
 
-          <p className="text-[11px] text-muted-foreground mt-3">
-            Scan to instantly view on any mobile device.
+          <p className={styles.shareScanHint}>
+            {lang === "am"
+              ? "በማንኛውም ስልክ ካሜራ ይህን QR በመቃኘት ምናሌውን ወዲያውኑ ይክፈቱ።"
+              : "Point any phone camera here to open this menu instantly."}
           </p>
 
-          {/* Actions */}
-          <div className="mt-5 space-y-2">
+          <div className={styles.shareUrlPreview}>
+            <span>{currentUrl}</span>
+          </div>
+
+          {/* Primary & Secondary Action Buttons */}
+          <div className={styles.shareActionsStack}>
             <button
+              type="button"
               onClick={handleCopy}
-              className="w-full py-2.5 px-4 rounded-xl font-medium text-xs uppercase tracking-wider flex items-center justify-center gap-2 bg-primary text-black hover:opacity-95 transition-opacity"
+              className={styles.sharePrimaryBtn}
             >
               {copied ? (
                 <>
-                  <Check className="w-4 h-4" /> Link Copied to Clipboard
+                  <Check size={15} />
+                  <span>
+                    {lang === "am"
+                      ? "ሊንኩ ተቀድቷል!"
+                      : "Menu Link Copied!"}
+                  </span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-4 h-4" /> Copy Public Menu Link
+                  <Copy size={15} />
+                  <span>
+                    {lang === "am"
+                      ? "የምናሌ ሊንክ ቅዳ (Copy Link)"
+                      : "Copy Public Menu Link"}
+                  </span>
                 </>
               )}
             </button>
 
-            {typeof navigator !== "undefined" && "share" in navigator && (
+            <div className={styles.shareSecondaryRow}>
               <button
+                type="button"
                 onClick={handleNativeShare}
-                className="w-full py-2.5 px-4 rounded-xl font-medium text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-border bg-secondary/50 hover:bg-secondary text-foreground transition-colors"
+                className={styles.shareSecondaryBtn}
               >
-                <Share2 className="w-4 h-4" /> Share Menu
+                <Share2 size={14} />
+                <span>{lang === "am" ? "ለጓደኛ አጋራ" : "Share Menu"}</span>
               </button>
-            )}
+
+              {activeQrSvg && (
+                <button
+                  type="button"
+                  onClick={handleDownloadQr}
+                  className={styles.shareSecondaryBtn}
+                >
+                  <Download size={14} />
+                  <span>{lang === "am" ? "QR አውርድ" : "Save QR SVG"}</span>
+                </button>
+              )}
+            </div>
           </div>
         </motion.div>
       </div>
     </AnimatePresence>
   );
 }
+

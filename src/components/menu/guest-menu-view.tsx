@@ -396,20 +396,47 @@ export function GuestMenuView({
   }, [menu.categories, budgetInput, fastingOnly]);
 
   const itemLookup = useMemo(() => {
-    const map = new Map<string, MenuItemData & { categoryName: string }>();
+    const map = new Map<
+      string,
+      MenuItemData & { categoryName: string; resolvedImageUrl: string }
+    >();
+    let globalIdx = 0;
     for (const cat of menu.categories) {
       const catLabel = resolveLocalizedText(cat.name, cat.nameAm, lang);
       for (const item of cat.items) {
-        map.set(item.id, { ...item, categoryName: catLabel });
+        const resolvedImageUrl = resolveMealPlateImage(
+          item,
+          cat.name,
+          cat.imageUrl,
+          globalIdx++
+        );
+        map.set(item.id, {
+          ...item,
+          categoryName: catLabel,
+          resolvedImageUrl,
+        });
       }
     }
     return map;
   }, [menu.categories, lang]);
 
-  const totalMenuCount = useMemo(
-    () => menu.categories.reduce((acc, cat) => acc + cat.items.length, 0),
-    [menu.categories]
-  );
+  const { totalMenuCount, fastingCount, specialsCount } = useMemo(() => {
+    let total = 0;
+    let fasting = 0;
+    let specials = 0;
+    for (const cat of menu.categories) {
+      for (const item of cat.items) {
+        total++;
+        if (isFastingFriendly(item)) fasting++;
+        if (item.isChefSpecial) specials++;
+      }
+    }
+    return {
+      totalMenuCount: total,
+      fastingCount: fasting,
+      specialsCount: specials,
+    };
+  }, [menu.categories]);
 
   useEffect(() => {
     setPage(1);
@@ -810,13 +837,30 @@ export function GuestMenuView({
                           </p>
                         )}
 
-                        {(fasting || !item.isAvailable) && (
+                        {(item.isChefSpecial ||
+                          fasting ||
+                          !item.isAvailable ||
+                          (item.reviewCount && item.ratingAverage != null)) && (
                           <div className={styles.mealBannerBadges}>
+                            {item.isChefSpecial && (
+                              <span className={styles.mealSpecialBadge}>
+                                <Sparkles size={10} />
+                                {lang === "am" ? "የሼፍ ልዩ" : "CHEF’S SPECIAL"}
+                              </span>
+                            )}
                             {fasting && (
                               <span className={styles.mealFastingBadge}>
                                 {lang === "am" ? "የጾም" : "ጾም · FASTING"}
                               </span>
                             )}
+                            {item.reviewCount != null &&
+                              item.reviewCount > 0 &&
+                              item.ratingAverage != null && (
+                                <span className={styles.mealRatingBadge}>
+                                  <Star size={10} fill="currentColor" />{" "}
+                                  {item.ratingAverage.toFixed(1)}
+                                </span>
+                              )}
                             {!item.isAvailable && (
                               <span className={styles.mealSoldOutBadge}>
                                 {lang === "am" ? "አልቋል" : "SOLD OUT"}
@@ -848,22 +892,27 @@ export function GuestMenuView({
                             ))}
                           </div>
                         ) : (
-                          <div className={styles.mealBannerPrice}>
-                            {discounted && (
-                              <s className={styles.mealBannerPriceStrike}>
+                          <div className={styles.mealBannerPriceRow}>
+                            <div className={styles.mealBannerPrice}>
+                              {discounted && (
+                                <s className={styles.mealBannerPriceStrike}>
+                                  {formatPrice(
+                                    item.price,
+                                    hotel.currency,
+                                    hotel.currencySymbol
+                                  )}
+                                </s>
+                              )}
+                              <span>
                                 {formatPrice(
-                                  item.price,
+                                  discounted ? item.discountPrice! : item.price,
                                   hotel.currency,
                                   hotel.currencySymbol
                                 )}
-                              </s>
-                            )}
-                            <span>
-                              {formatPrice(
-                                discounted ? item.discountPrice! : item.price,
-                                hotel.currency,
-                                hotel.currencySymbol
-                              )}
+                              </span>
+                            </div>
+                            <span className={styles.mealTapActionCue}>
+                              {lang === "am" ? "ዝርዝር ›" : "Details ›"}
                             </span>
                           </div>
                         )}
@@ -887,6 +936,12 @@ export function GuestMenuView({
       : viewMode === "LIST"
       ? styles.listContainer
       : styles.cardsContainer;
+
+  const selectedItemResolvedImage = selectedItem
+    ? itemLookup.get(selectedItem.id)?.resolvedImageUrl ||
+      selectedItem.imageUrl ||
+      null
+    : null;
 
   return (
     <div className={styles.shell}>
@@ -921,51 +976,26 @@ export function GuestMenuView({
                   lang === "am" ? styles.langToggleActive : ""
                 }`}
               >
-                <span>{lang === "am" ? "አማ · EN" : "EN · አማ"}</span>
+                <span>{lang === "am" ? "አማርኛ · EN" : "EN · አማርኛ"}</span>
               </button>
               <button
                 type="button"
-                aria-label="Search menu"
-                aria-expanded={searchOpen || Boolean(searchQuery)}
-                onClick={() => {
-                  if (searchOpen && searchQuery) {
-                    setSearchQuery("");
-                  }
-                  setSearchOpen((prev) => !prev);
-                }}
-                className={`${styles.iconButton} ${
-                  searchOpen || searchQuery ? styles.toolActive : ""
-                }`}
-                title="Search menu"
+                onClick={() => setBudgetModalOpen(true)}
+                className={styles.heroActionPillGold}
+                title="Find meal combinations for your budget"
               >
-                <Search size={14} />
+                <Wallet size={13} />
+                <span>{lang === "am" ? "በበጀት ምርጫ" : "Eat by Budget"}</span>
               </button>
               <button
                 type="button"
-                aria-label="Dietary and meal filters"
-                aria-expanded={filtersOpen}
-                aria-controls="menu-filters"
-                onClick={() => setFiltersOpen(!filtersOpen)}
-                className={`${styles.iconButton} ${
-                  filtersOpen ||
-                  dietary.length > 0 ||
-                  fastingOnly ||
-                  specialsOnly
-                    ? styles.toolActive
-                    : ""
-                }`}
-                title="Dietary & preferences"
-              >
-                <SlidersHorizontal size={14} />
-              </button>
-              <button
-                type="button"
-                aria-label="Share menu"
+                aria-label="Share menu or QR code"
                 onClick={() => setShareOpen(true)}
-                className={styles.iconButton}
+                className={styles.heroActionPill}
                 title="Share menu or QR code"
               >
-                <Share2 size={14} />
+                <Share2 size={13} />
+                <span>{lang === "am" ? "QR እና አጋራ" : "QR & Share"}</span>
               </button>
             </div>
 
@@ -1028,7 +1058,7 @@ export function GuestMenuView({
           </div>
         </section>
 
-        {/* Clean Single-Row Sticky Category Navigation (with on-demand Search & Filter drawers) */}
+        {/* Sticky Navigation + Always-Visible Feature Actions Strip */}
         <header className={styles.header}>
           {(searchOpen || searchQuery) && (
             <div className={styles.searchDrawer}>
@@ -1040,7 +1070,7 @@ export function GuestMenuView({
                   placeholder={
                     lang === "am"
                       ? "ምግብ ወይም መጠጥ ይፈልጉ…"
-                      : "Search dishes or drinks…"
+                      : "Search dishes, ingredients, or drinks…"
                   }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1087,58 +1117,110 @@ export function GuestMenuView({
             ))}
           </nav>
 
+          {/* Always-Visible Best Feature Actions Bar (No longer hidden!) */}
+          <div
+            className={styles.featureActionStrip}
+            role="toolbar"
+            aria-label="Quick menu actions and hospitality filters"
+          >
+            <button
+              type="button"
+              onClick={() => setBudgetModalOpen(true)}
+              className={`${styles.featureActionPill} ${styles.featureBudgetCta}`}
+            >
+              <Wallet size={13} />
+              <span>
+                {lang === "am" ? "በበጀት ምርጫ" : "Budget Finder"}
+              </span>
+            </button>
+
+            {fastingCount > 0 && (
+              <button
+                type="button"
+                aria-pressed={fastingOnly}
+                onClick={() => setFastingOnly((prev) => !prev)}
+                className={`${styles.featureActionPill} ${
+                  fastingOnly ? styles.featureFastingActive : ""
+                }`}
+              >
+                <Leaf size={13} />
+                <span>{lang === "am" ? "የጾም ምግቦች" : "ጾም · Fasting"}</span>
+                <small className={styles.featureActionCount}>
+                  {fastingCount}
+                </small>
+              </button>
+            )}
+
+            {specialsCount > 0 && (
+              <button
+                type="button"
+                aria-pressed={specialsOnly}
+                onClick={() => setSpecialsOnly((prev) => !prev)}
+                className={`${styles.featureActionPill} ${
+                  specialsOnly ? styles.featureSpecialActive : ""
+                }`}
+              >
+                <Sparkles size={13} />
+                <span>
+                  {lang === "am" ? "የሼፍ ልዩ" : "Chef’s Specials"}
+                </span>
+                <small className={styles.featureActionCount}>
+                  {specialsCount}
+                </small>
+              </button>
+            )}
+
+            <button
+              type="button"
+              aria-pressed={searchOpen || Boolean(searchQuery)}
+              onClick={() => {
+                if (searchOpen && searchQuery) {
+                  setSearchQuery("");
+                }
+                setSearchOpen((prev) => !prev);
+              }}
+              className={`${styles.featureActionPill} ${
+                searchOpen || searchQuery ? styles.featureSearchActive : ""
+              }`}
+            >
+              <Search size={13} />
+              <span>{lang === "am" ? "ፈልግ" : "Search"}</span>
+            </button>
+
+            <button
+              type="button"
+              aria-expanded={filtersOpen}
+              aria-controls="menu-filters"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+              className={`${styles.featureActionPill} ${
+                filtersOpen || dietary.length > 0
+                  ? styles.featureSearchActive
+                  : ""
+              }`}
+            >
+              <SlidersHorizontal size={12} />
+              <span>{lang === "am" ? "ተጨማሪ ማጣሪያ" : "Dietary"}</span>
+              {dietary.length > 0 && (
+                <small className={styles.featureActionCount}>
+                  {dietary.length}
+                </small>
+              )}
+            </button>
+
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className={styles.clearFiltersPill}
+              >
+                <X size={11} />
+                <span>{lang === "am" ? "አጽዳ" : "Reset"}</span>
+              </button>
+            )}
+          </div>
+
           {filtersOpen && (
             <div id="menu-filters" className={styles.filters}>
-              <div className={styles.quickBar}>
-                <button
-                  type="button"
-                  aria-pressed={fastingOnly}
-                  onClick={() => setFastingOnly((prev) => !prev)}
-                  className={`${styles.quickPill} ${
-                    fastingOnly ? styles.quickPillActive : ""
-                  }`}
-                >
-                  <Leaf size={12} />
-                  <span>
-                    {lang === "am" ? "የጾም ምግቦች" : "ጾም · Fasting Friendly"}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  aria-pressed={specialsOnly}
-                  onClick={() => setSpecialsOnly((prev) => !prev)}
-                  className={`${styles.quickPill} ${
-                    specialsOnly ? styles.quickPillActive : ""
-                  }`}
-                >
-                  <Sparkles size={12} />
-                  <span>{lang === "am" ? "የሼፍ ልዩ" : "Chef’s Specials"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBudgetModalOpen(true)}
-                  className={`${styles.quickPill} ${styles.budgetPill}`}
-                >
-                  <Wallet size={12} />
-                  <span>
-                    {lang === "am" ? "በበጀት ምርጫ" : "Budget Meal Finder"}
-                  </span>
-                </button>
-
-                {hasFilters && (
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    className={styles.clearFiltersPill}
-                  >
-                    <X size={11} />
-                    <span>{lang === "am" ? "ሁሉንም አሳይ" : "Clear"}</span>
-                  </button>
-                )}
-              </div>
-
               <div className={styles.filterTags}>
                 {DIETARY_OPTIONS.map((tag) => (
                   <button
@@ -1425,7 +1507,7 @@ export function GuestMenuView({
         </footer>
       </div>
 
-      {/* Budget Meal Builder Modal */}
+      {/* Upgraded Smart Budget Meal Builder Modal */}
       {budgetModalOpen && (
         <div
           className={styles.budgetOverlay}
@@ -1436,137 +1518,209 @@ export function GuestMenuView({
           <div
             className={styles.budgetModal}
             role="dialog"
-            aria-label="Budget Meal Builder"
+            aria-modal="true"
+            aria-label="Smart Budget Meal Finder"
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div>
-                <div className={styles.categoryLabel}>
-                  {lang === "am" ? "የበጀት ምግብ መምረጫ" : "Smart Combo Finder"}
-                </div>
-                <h2 style={{ fontSize: "18px", fontWeight: 800, marginTop: 4 }}>
+            <div className={styles.budgetModalHeader}>
+              <div className={styles.budgetModalTitleWrap}>
+                <span className={styles.budgetModalEyebrow}>
+                  <Wallet size={12} />
+                  {lang === "am"
+                    ? "የበጀት ምግብ መምረጫ"
+                    : "SMART BUDGET MEAL FINDER"}
+                </span>
+                <h2 className={styles.budgetModalHeading}>
                   {lang === "am"
                     ? "በበጀትዎ ምን መመገብ ይችላሉ?"
-                    : `What can I eat for my budget?`}
+                    : "What can I eat for my budget?"}
                 </h2>
+                <p className={styles.budgetModalSub}>
+                  {lang === "am"
+                    ? "በጀትዎን ያስገቡ እና ምርጥ የምግብ እና መጠጥ ጥምረቶችን ይመልከቱ።"
+                    : "Enter your budget to discover curated single dishes, main + drink pairings, and full feasts."}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setBudgetModalOpen(false)}
-                className={styles.iconButton}
+                className={styles.modalDismissCircle}
                 aria-label="Close budget builder"
               >
-                <X size={16} />
+                <X size={17} />
               </button>
             </div>
 
-            <div className={styles.budgetInputRow}>
-              <span style={{ fontSize: "13px", fontWeight: 800, color: "#fbbf24" }}>
-                {hotel.currencySymbol}
-              </span>
-              <input
-                type="number"
-                min="1"
-                step="10"
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(e.target.value)}
-                placeholder="Enter your budget..."
-                className={styles.budgetInput}
-              />
-            </div>
+            <div className={styles.budgetInputCard}>
+              <div className={styles.budgetInputRow}>
+                <span className={styles.budgetCurrencyTag}>
+                  {hotel.currencySymbol}
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="50"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  placeholder="Enter your budget..."
+                  className={styles.budgetInput}
+                />
+                <div className={styles.budgetStepButtons}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBudgetInput((prev) =>
+                        String(Math.max(50, (parseFloat(prev) || 0) - 100))
+                      )
+                    }
+                    className={styles.budgetStepBtn}
+                  >
+                    -100
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBudgetInput((prev) =>
+                        String((parseFloat(prev) || 0) + 100)
+                      )
+                    }
+                    className={styles.budgetStepBtn}
+                  >
+                    +100
+                  </button>
+                </div>
+              </div>
 
-            <div className={styles.budgetPresets}>
-              {["250", "400", "600", "1000", "1500"].map((preset) => (
+              <div className={styles.budgetPresets}>
+                {["250", "400", "600", "1000", "1500"].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setBudgetInput(preset)}
+                    className={`${styles.budgetPresetBtn} ${
+                      budgetInput === preset ? styles.budgetPresetBtnActive : ""
+                    }`}
+                  >
+                    {formatPrice(
+                      Number(preset),
+                      hotel.currency,
+                      hotel.currencySymbol
+                    )}
+                  </button>
+                ))}
                 <button
-                  key={preset}
                   type="button"
-                  onClick={() => setBudgetInput(preset)}
-                  className={styles.budgetPresetBtn}
+                  onClick={() => setFastingOnly((prev) => !prev)}
+                  className={`${styles.budgetPresetBtn} ${
+                    fastingOnly ? styles.featureFastingActive : ""
+                  }`}
                 >
-                  {formatPrice(Number(preset), hotel.currency, hotel.currencySymbol)}
+                  <Leaf
+                    size={11}
+                    style={{ display: "inline", marginRight: 4 }}
+                  />
+                  {lang === "am" ? "የጾም ብቻ" : "ጾም · Fasting Only"}
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setFastingOnly((prev) => !prev)}
-                className={`${styles.budgetPresetBtn} ${
-                  fastingOnly ? styles.quickPillActive : ""
-                }`}
-              >
-                <Leaf size={10} style={{ display: "inline", marginRight: 4 }} />
-                {lang === "am" ? "የጾም ብቻ" : "ጾም Only"}
-              </button>
+              </div>
             </div>
 
-            <div style={{ marginTop: "14px" }}>
+            <div className={styles.budgetResultsWrap}>
               {budgetCombos.length === 0 ? (
-                <div className={styles.empty} style={{ padding: "20px" }}>
+                <div className={styles.empty} style={{ padding: "24px 18px" }}>
+                  <Wallet size={26} />
+                  <h2>
+                    {lang === "am"
+                      ? "በዚህ በጀት ምርጫ አልተገኘም"
+                      : "No combinations under this amount"}
+                  </h2>
                   <p>
                     {lang === "am"
-                      ? "በዚህ በጀት የሚገኝ ምርጫ የለም። እባክዎ መጠኑን ከፍ ያድርጉ።"
-                      : "No combinations found within this budget. Try increasing the amount above."}
+                      ? "እባክዎ ከላይ ያለውን የበጀት መጠን ከፍ ያድርጉ።"
+                      : "Try tapping +100 or choosing a higher preset above to unlock meal pairings."}
                   </p>
                 </div>
               ) : (
                 budgetCombos.map((combo) => (
                   <div key={combo.id} className={styles.budgetComboCard}>
                     <div className={styles.budgetComboHeader}>
-                      <span>{combo.label}</span>
-                      <span>
-                        Total:{" "}
-                        {formatPrice(
-                          combo.totalPrice,
-                          hotel.currency,
-                          hotel.currencySymbol
-                        )}{" "}
-                        (Save{" "}
-                        {formatPrice(
-                          combo.remainingBudget,
-                          hotel.currency,
-                          hotel.currencySymbol
-                        )}
-                        )
+                      <span className={styles.budgetComboTypeBadge}>
+                        <Sparkles size={11} />
+                        {combo.label}
                       </span>
-                    </div>
-                    <div className={styles.budgetComboItems}>
-                      {combo.items.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => {
-                            const fullItem = itemLookup.get(entry.id);
-                            if (fullItem) {
-                              setBudgetModalOpen(false);
-                              setSelectedItem(fullItem);
-                            }
-                          }}
-                          className={styles.budgetComboItem}
-                        >
-                          <span>
-                            {resolveLocalizedText(
-                              entry.name,
-                              entry.nameAm,
-                              lang
-                            )}{" "}
-                            <small style={{ color: "#a1a1aa", fontWeight: 500 }}>
-                              · {entry.categoryName}
-                            </small>
-                          </span>
-                          <span style={{ color: "#fbbf24" }}>
+                      <div className={styles.budgetComboPriceMeta}>
+                        <strong className={styles.budgetComboTotal}>
+                          {formatPrice(
+                            combo.totalPrice,
+                            hotel.currency,
+                            hotel.currencySymbol
+                          )}
+                        </strong>
+                        {combo.remainingBudget > 0 && (
+                          <span className={styles.budgetComboSavePill}>
+                            {lang === "am" ? "ቀሪ " : "Save "}
                             {formatPrice(
-                              entry.price,
+                              combo.remainingBudget,
                               hotel.currency,
                               hotel.currencySymbol
                             )}
                           </span>
-                        </button>
-                      ))}
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={styles.budgetComboItems}>
+                      {combo.items.map((entry) => {
+                        const fullItem = itemLookup.get(entry.id);
+                        return (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            onClick={() => {
+                              if (fullItem) {
+                                setBudgetModalOpen(false);
+                                setSelectedItem(fullItem);
+                              }
+                            }}
+                            className={styles.budgetComboItem}
+                          >
+                            <div className={styles.budgetComboItemLeft}>
+                              {fullItem?.resolvedImageUrl && (
+                                <div className={styles.budgetComboThumb}>
+                                  <Image
+                                    src={fullItem.resolvedImageUrl}
+                                    alt=""
+                                    fill
+                                    sizes="44px"
+                                    unoptimized
+                                    className={styles.cover}
+                                  />
+                                </div>
+                              )}
+                              <div className={styles.budgetComboItemText}>
+                                <span className={styles.budgetComboDishName}>
+                                  {resolveLocalizedText(
+                                    entry.name,
+                                    entry.nameAm,
+                                    lang
+                                  )}
+                                </span>
+                                <small className={styles.budgetComboDishCat}>
+                                  {entry.categoryName}
+                                </small>
+                              </div>
+                            </div>
+                            <div className={styles.budgetComboItemRight}>
+                              <span className={styles.budgetComboItemPrice}>
+                                {formatPrice(
+                                  entry.price,
+                                  hotel.currency,
+                                  hotel.currencySymbol
+                                )}
+                              </span>
+                              <ChevronRight size={13} />
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))
@@ -1582,7 +1736,12 @@ export function GuestMenuView({
         isPreview={isPreview}
         item={selectedItem}
         categoryName={selectedItem?.categoryName}
+        resolvedImageUrl={selectedItemResolvedImage}
         onClose={() => setSelectedItem(null)}
+        onOpenBudgetFinder={(suggestedBudget) => {
+          setBudgetInput(String(suggestedBudget));
+          setBudgetModalOpen(true);
+        }}
         currency={hotel.currency}
         currencySymbol={hotel.currencySymbol}
         lang={lang}
@@ -1595,8 +1754,10 @@ export function GuestMenuView({
         menuSlug={menu.slug}
         menuId={menu.id}
         qrCodeSvg={menu.qrCodeSvg}
+        lang={lang}
       />
     </div>
   );
 }
+
 

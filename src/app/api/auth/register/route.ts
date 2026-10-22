@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hashPassword, signSessionToken, setAuthCookie, getJwtSecret } from "@/lib/auth";
+import { auth } from "@/lib/better-auth";
 import { registerSchema } from "@/validations";
 import { slugify } from "@/lib/utils";
 import { generateQrSvg, buildStableMenuUrl } from "@/lib/qr";
@@ -21,10 +22,11 @@ export async function POST(req: Request) {
     }
 
     const { hotelName, email, password, name, currency, currencySymbol, city, country } = validated.data;
+    const normalizedEmail = email.toLowerCase().trim();
 
     // Check if user already exists
     const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: normalizedEmail },
     });
 
     if (existingUser) {
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
     }
 
     // Generate unique slug for the hotel
-    let baseSlug = slugify(hotelName);
+    const baseSlug = slugify(hotelName);
     let finalSlug = baseSlug;
     let count = 1;
     while (await db.hotel.findUnique({ where: { slug: finalSlug } })) {
@@ -44,13 +46,13 @@ export async function POST(req: Request) {
 
     const passwordHash = await hashPassword(password);
 
-    // Create Hotel, Owner User, and Starter Default Menu in transaction
+    // Create Hotel, Owner User, Better Auth Credential Account, and Starter Default Menu in transaction
     const result = await db.$transaction(async (tx) => {
       const hotel = await tx.hotel.create({
         data: {
           name: hotelName,
           slug: finalSlug,
-          email: email.toLowerCase(),
+          email: normalizedEmail,
           currency: currency || "USD",
           currencySymbol: currencySymbol || "$",
           city: city || null,
@@ -66,9 +68,18 @@ export async function POST(req: Request) {
         data: {
           hotelId: hotel.id,
           name,
-          email: email.toLowerCase(),
+          email: normalizedEmail,
           passwordHash,
           role: Role.OWNER,
+        },
+      });
+
+      await tx.account.create({
+        data: {
+          accountId: user.id,
+          providerId: "credential",
+          userId: user.id,
+          password: passwordHash,
         },
       });
 
@@ -119,6 +130,19 @@ export async function POST(req: Request) {
 
       return { hotel, user, starterMenu };
     });
+
+    // Establish Better Auth session as well
+    try {
+      await auth.api.signInEmail({
+        body: {
+          email: normalizedEmail,
+          password,
+        },
+        headers: req.headers,
+      });
+    } catch {
+      // Non-fatal in headless test environments
+    }
 
     const token = await signSessionToken({
       userId: result.user.id,

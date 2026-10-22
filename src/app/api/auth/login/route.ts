@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPassword, signSessionToken, setAuthCookie } from "@/lib/auth";
+import { auth, syncCredentialAccountForUser } from "@/lib/better-auth";
 import { loginSchema } from "@/validations";
 
 export async function POST(req: Request) {
@@ -16,9 +17,10 @@ export async function POST(req: Request) {
     }
 
     const { email, password } = validated.data;
+    const normalizedEmail = email.toLowerCase().trim();
 
     const user = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: normalizedEmail },
       include: {
         hotel: true,
       },
@@ -31,12 +33,47 @@ export async function POST(req: Request) {
       );
     }
 
-    const isValid = await verifyPassword(password, user.passwordHash);
+    // Check password against User.passwordHash or Better Auth Account.password
+    let passwordHashToVerify = user.passwordHash;
+    if (!passwordHashToVerify) {
+      const credAccount = await db.account.findFirst({
+        where: { userId: user.id, providerId: "credential" },
+      });
+      passwordHashToVerify = credAccount?.password || "";
+    }
+
+    if (!passwordHashToVerify) {
+      return NextResponse.json(
+        { error: "This account uses Google Sign-In. Please continue with Google." },
+        { status: 401 }
+      );
+    }
+
+    const isValid = await verifyPassword(password, passwordHashToVerify);
     if (!isValid) {
       return NextResponse.json(
         { error: "Invalid email or password" },
         { status: 401 }
       );
+    }
+
+    // Ensure Better Auth credential Account record is synced
+    await syncCredentialAccountForUser({
+      id: user.id,
+      passwordHash: passwordHashToVerify,
+    });
+
+    // Trigger Better Auth signInEmail so Better Auth session cookie is set alongside JWT cookie
+    try {
+      await auth.api.signInEmail({
+        body: {
+          email: normalizedEmail,
+          password,
+        },
+        headers: req.headers,
+      });
+    } catch {
+      // Non-fatal if called in a headless test context
     }
 
     const token = await signSessionToken({
@@ -77,10 +114,11 @@ export async function POST(req: Request) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Login error:", error);
+    const message = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
-      { error: error?.message || "Internal server error", details: String(error) },
+      { error: message, details: String(error) },
       { status: 500 }
     );
   }

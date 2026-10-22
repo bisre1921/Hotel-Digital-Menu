@@ -79,6 +79,13 @@ export async function POST(req: Request) {
         passwordHash,
         name,
         role,
+        accounts: {
+          create: {
+            accountId: email.toLowerCase(),
+            providerId: "credential",
+            password: passwordHash,
+          },
+        },
       },
       select: {
         id: true,

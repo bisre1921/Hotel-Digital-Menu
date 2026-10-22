@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import design from "@/components/admin/workspace.module.css";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { authClient } from "@/lib/auth-client";
 
 interface AdminNavProps {
   user: {
@@ -63,6 +64,7 @@ export function AdminNav({ user, hotel, firstMenuSlug, children }: AdminNavProps
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
+      await authClient.signOut().catch(() => null);
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/admin/login");
       router.refresh();

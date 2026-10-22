@@ -2,6 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "../src/lib/db";
 import { MenuLayout } from "@prisma/client";
+import {
+  auth,
+  provisionHotelWorkspace,
+  syncCredentialAccountForUser,
+} from "../src/lib/better-auth";
 
 describe("5. PostgreSQL Database Persistence & Multi-Tenant Isolation", () => {
   it("should successfully query the seeded luxury hotels", async () => {
@@ -95,5 +100,40 @@ describe("5. PostgreSQL Database Persistence & Multi-Tenant Isolation", () => {
 
     // 5. Clean up test record
     await db.menu.delete({ where: { id: testMenu.id } });
+  });
+
+  it("should sync Better Auth credential accounts and provision workspaces for Google OAuth users", async () => {
+    assert.ok(auth.api);
+    assert.equal(typeof auth.handler, "function");
+
+    const azureAdmin = await db.user.findUnique({
+      where: { email: "admin@grandazure.com" },
+    });
+    assert.ok(azureAdmin);
+
+    await syncCredentialAccountForUser({
+      id: azureAdmin.id,
+      passwordHash: azureAdmin.passwordHash,
+    });
+
+    const credAccount = await db.account.findFirst({
+      where: { userId: azureAdmin.id, providerId: "credential" },
+    });
+    assert.ok(credAccount !== null);
+    assert.equal(credAccount.password, azureAdmin.passwordHash);
+
+    const testOAuthEmail = `google-oauth-${Date.now()}@example.com`;
+    const { hotel, starterMenu } = await provisionHotelWorkspace({
+      hotelName: "Google OAuth Bistro",
+      email: testOAuthEmail,
+      currency: "ETB",
+      currencySymbol: "Br ",
+    });
+
+    assert.ok(hotel.id);
+    assert.equal(starterMenu.hotelId, hotel.id);
+    assert.equal(starterMenu.isPublished, true);
+
+    await db.hotel.delete({ where: { id: hotel.id } });
   });
 });

@@ -2,6 +2,8 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies, headers } from "next/headers";
 import { Role } from "@prisma/client";
+import { auth } from "@/lib/better-auth";
+import { db } from "@/lib/db";
 
 export function getJwtSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -55,7 +57,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 export async function getSession(req?: Request): Promise<SessionPayload | null> {
   let token: string | undefined;
 
-  // 1. Check passed Request Authorization header
+  // 1. Check passed Request Authorization header for Bearer JWT
   if (req) {
     const authHeader = req.headers.get("authorization");
     if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
@@ -64,10 +66,11 @@ export async function getSession(req?: Request): Promise<SessionPayload | null> 
   }
 
   // 2. Check next/headers() Authorization header if available
+  let nextHeaderList: Headers | null = null;
   if (!token) {
     try {
-      const headerList = headers();
-      const authHeader = headerList.get("authorization");
+      nextHeaderList = headers();
+      const authHeader = nextHeaderList.get("authorization");
       if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
         token = authHeader.slice(7).trim();
       }
@@ -76,7 +79,49 @@ export async function getSession(req?: Request): Promise<SessionPayload | null> 
     }
   }
 
-  // 3. Fallback to auth cookie
+  // If an explicit Bearer token was provided, verify it first
+  if (token) {
+    const verified = await verifySessionToken(token);
+    if (verified) return verified;
+  }
+
+  // 3. Check Better Auth session (supports Email/Password & Google Sign-In cookies)
+  try {
+    const reqHeaders = req ? req.headers : nextHeaderList || headers();
+    const betterSession = await auth.api.getSession({
+      headers: reqHeaders,
+    });
+    if (betterSession?.user?.id) {
+      const sessionUser = betterSession.user as Record<string, unknown>;
+      let hotelId = typeof sessionUser.hotelId === "string" ? sessionUser.hotelId : "";
+      let role = (sessionUser.role as Role) || Role.OWNER;
+
+      if (!hotelId || !Object.values(Role).includes(role)) {
+        const dbUser = await db.user.findUnique({
+          where: { id: betterSession.user.id },
+          select: { hotelId: true, role: true },
+        });
+        if (dbUser) {
+          hotelId = dbUser.hotelId;
+          role = dbUser.role;
+        }
+      }
+
+      if (hotelId) {
+        return {
+          userId: betterSession.user.id,
+          hotelId,
+          email: betterSession.user.email,
+          name: betterSession.user.name,
+          role,
+        };
+      }
+    }
+  } catch {
+    // Fallback to legacy JWT cookie if Better Auth session check fails
+  }
+
+  // 4. Fallback to legacy JWT auth cookie
   if (!token) {
     try {
       const cookieStore = cookies();
@@ -143,6 +188,19 @@ export async function clearAuthCookie() {
       path: "/",
       maxAge: 0,
     });
+    // Also clear Better Auth session cookies if present
+    for (const cookieName of [
+      "better-auth.session_token",
+      "__Secure-better-auth.session_token",
+    ]) {
+      cookieStore.set(cookieName, "", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      });
+    }
   } catch {
     // In environments where cookies() cannot be directly mutated
   }

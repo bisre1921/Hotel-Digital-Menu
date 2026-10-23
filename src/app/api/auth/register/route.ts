@@ -166,8 +166,14 @@ export async function POST(req: Request) {
       },
       hotel: result.hotel,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error:", error);
-    return NextResponse.json({ error: "Failed to register hotel" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error?.message || "Failed to register hotel",
+        details: String(error?.stack || error),
+      },
+      { status: 500 }
+    );
   }
 }
